@@ -553,8 +553,11 @@ def lambda_handler(event, context):
 
         save_certificates_to_s3(conf, domain, chain, certificate)
         iam_cert = upload_to_iam(conf, domain, chain, certificate, key)
-        if iam_cert is not False and iam_cert['ResponseMetadata']['HTTPStatusCode'] is 200 and 'elb' in domain.keys():
-            update_elb_server_certificate(conf, domain, iam_cert['ServerCertificateMetadata']['Arn'])
-        else:
+        if iam_cert is False or iam_cert['ResponseMetadata']['HTTPStatusCode'] is not 200:
             LOG.error("An error occurred while saving your server certificate in IAM. Skipping domain '{0}'.".format(domain['name']))
             continue
+
+        if 'elb' in domain.keys():
+            res = update_elb_server_certificate(conf, domain, iam_cert['ServerCertificateMetadata']['Arn'])
+            if res is not True:
+                LOG.error("An error occurred while attaching your server certificate to your ELB.")
