@@ -68,7 +68,8 @@ As a possible alternative, you may use the CloudFormation Management Console to 
 As part of the deployment process, the CloudFormation template will create 4 IAM managed policies and one Lambda execution role. Each managed policy has been crafted so you can access your resources securely. The Lambda execution role defines the privilege level for the Lambda function.
 
  - `LetsLambdaManagedPolicy` This policy is core to the Lambda function and how it interacts with CloudWatch logs, Amazon IAM, Amazon Elastic Load Balancing and Route53.
- - `LetsLambdaKmsKeyManagedPolicy`Through this policy, the Lambda function can encrypt and read encrypted private keys.
+ - `LetsLambdaKmsKeyManagedPolicy` Through this policy, the Lambda function can encrypt content when storing information into S3. Only the Lambda function should be using this role.
+ - `LetsLambdaKmsKeyDecryptManagedPolicy` This policy should be used by both the Lambda function and selected EC2 instances (consumers) since it provides the mean to decrypt content stored in S3.
  - `LetsLambdaS3WriteManagedPolicy`Allow the Lambda function to write into the user defined S3 bucket.
  - `LetsLambdaS3ReadManagedPolicy` This policy is used to access any objects in the S3 bucket. Encrypted objects such as private keys will remain inaccessible until `LetsLambdaKmsKeyManagedPolicy`is used in conjunction with this policy.
 
