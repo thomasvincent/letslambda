@@ -8,11 +8,33 @@
         },
         "Region": {
             "Description": "Region short code name where the S3 bucket is located (ie: eu-west-1)",
-            "Type": "String"
+            "Type" : "String",
+            "AllowedValues": ["ap-northeast-1", "ap-northeast-2", "ap-southeast-1", "ap-southeast-2",
+                              "eu-central-1", "eu-west-1", "sa-east-1", "us-east-1", "us-west-1", "us-west-2"]
         },
         "KmsEncryptionKeyArn": {
             "Description": "Default KMS Encryption Key (arn) used to securely store your SSL private keys. Use 'AES256' for S3 automatic encryption",
             "Type": "String"
+        }
+    },
+    "Metadata" : {
+        "AWS::CloudFormation::Interface" : {
+            "ParameterGroups":
+            [
+                {
+                    "Label": {"default": "Storage settings" },
+                    "Parameters": ["Bucket", "Region" ]
+                },
+                {
+                    "Label": {"default": "Encryption settings" },
+                    "Parameters": ["KmsEncryptionKeyArn" ]
+                }
+            ],
+            "ParameterLabels" : {
+                "Region": { "default": "In which AWS region your S3 bucket is located?" },
+                "Bucket": { "default": "Name of your S3 bucket containing your configuration and Lambda function" },
+                "KmsEncryptionKeyArn": { "default": "How to encrypt your sensitive data (private keys)?" }
+            }
         }
     },
     "Conditions": {
