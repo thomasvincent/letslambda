@@ -4,3 +4,5 @@ src
 *.sw?
 *.pyc
 run.py
+letslambda.zip
+tmp/

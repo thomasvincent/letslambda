@@ -36,11 +36,7 @@ This project relies on third party projects that requires some files to be compi
     $> virtualenv .env
     $> source .env/bin/activate
     $> pip install -r requirements.txt
-    $> mv .env/lib/python2.7/site-packages/* .
-    $> mv .env/lib64/python2.7/site-packages/* .
-    $> mv .env/src/acme/acme/acme* .
-    $> rm -rf .env
-    $> zip -r letslambda.zip .
+    $> ./make_package.sh
 
 If you're development environment is running on Debian Linux, you need the following commands, but this may not be entirely compatible since the operating system distribution is different:
 
@@ -48,13 +44,9 @@ If you're development environment is running on Debian Linux, you need the follo
     $> virtualenv .env
     $> source .env/bin/activate
     $> pip install -r requirements.txt
-    $> mv .env/lib/python2.7/site-packages/* .
-    $> mv .env/lib64/python2.7/site-packages/* .
-    $> mv .env/src/acme/acme/acme* .
-    $> rm -rf .env
-    $> zip -r letslambda.zip .
+    $> ./make_package.sh
 
-Once this is done, all you have to do is to upload your lambda function to a S3 bucket.
+Once this is done, all you have to do is to upload your lambda function (`letslambda.zip`) to your S3 bucket.
 
     $> aws s3 cp letslambda.zip s3://bucket/
 Alternatively, you may use the Amazon Management Console to upload your package from the comfort of your web browser.
