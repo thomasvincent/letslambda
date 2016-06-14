@@ -39,10 +39,10 @@
                 }
             }
         },
-        "LetsLambdaKmsKeyManagedPolicy": {
+        "LetsLambdaKmsKeyDecryptManagedPolicy": {
             "Type": "AWS::IAM::ManagedPolicy",
             "Properties": {
-                "Description" : "Allow lambda and selected EC2 instances to access the letslambda KMS key",
+                "Description" : "Allow LetsLambda function and selected EC2 instances to access the letslambda KMS key for decrypt operation only",
                 "Path" : "/",
                 "PolicyDocument" : {
                     "Version":"2012-10-17",
@@ -50,7 +50,30 @@
                         {
                             "Effect" : "Allow",
                             "Action" : [
-                                "kms:Decrypt",
+                                "kms:Decrypt"
+                            ],
+                            "Resource" : [
+                                {"Fn::If": [ "KmsArnProvided",
+                                    {"Ref": "KmsEncryptionKeyArn"},
+                                    {"Fn::Join": ["", ["arn:aws:kms:", {"Ref": "AWS::Region"}, ":", {"Ref": "AWS::AccountId"}, ":key/12345678-1234-1234-1234-123456789012"]]}
+                                ]}
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        "LetsLambdaKmsKeyManagedPolicy": {
+            "Type": "AWS::IAM::ManagedPolicy",
+            "Properties": {
+                "Description" : "Allow LetsLambda function access the letslambda KMS key for encryption operations",
+                "Path" : "/",
+                "PolicyDocument" : {
+                    "Version":"2012-10-17",
+                    "Statement" : [
+                        {
+                            "Effect" : "Allow",
+                            "Action" : [
                                 "kms:DescribeKey",
                                 "kms:Encrypt",
                                 "kms:GenerateDataKey*",
@@ -149,7 +172,8 @@
                     {"Ref": "LetsLambdaManagedPolicy"},
                     {"Ref": "LetsLambdaS3WriteManagedPolicy"},
                     {"Ref": "LetsLambdaS3ReadManagedPolicy"},
-                    {"Ref": "LetsLambdaKmsKeyManagedPolicy"}
+                    {"Ref": "LetsLambdaKmsKeyManagedPolicy"},
+                    {"Ref": "LetsLambdaKmsKeyDecryptManagedPolicy"}
                 ],
                 "AssumeRolePolicyDocument": {
                     "Version": "2012-10-17",
