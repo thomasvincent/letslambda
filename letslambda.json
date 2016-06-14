@@ -32,7 +32,7 @@
             ],
             "ParameterLabels" : {
                 "Region": { "default": "In which AWS region your S3 bucket is located?" },
-                "Bucket": { "default": "Name of your S3 bucket containing your configuration and Lambda function" },
+                "Bucket": { "default": "Name of your S3 bucket containing your LetsLambda configuration" },
                 "KmsEncryptionKeyArn": { "default": "How to encrypt your sensitive data (private keys)?" }
             }
         }
