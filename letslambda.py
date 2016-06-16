@@ -68,14 +68,28 @@ def load_letsencrypt_account_key(conf):
     The letsenrypt account key is needed to avoid redoing the Proof of
     Possession challenge (PoP). It is also used to revoke an existing
     certificate.
+
+    The old naming convention is .key.ras for the private key, but for
+    consistency's sake crypto material were all named with .pem
+    the function takes care of both, but defaults to the new behavior.
     """
     LOG.debug("Loading account key from s3")
 
     newAccountNeeded = False
+
+    # check if an 'old' .key.rsa is present and load it
     account_key = load_from_s3(conf, 'account.key.rsa')
     if account_key == None:
-        account_key = create_and_save_key(conf, "account.key.rsa", conf['kms_key'])
-        newAccountNeeded = True
+        # but if not, then use the new naming of '.key.pem'
+        account_key = load_from_s3(conf, 'account.key.pem')
+        if account_key == None:
+            account_key = create_and_save_key(conf, "account.key.pem", conf['kms_key'])
+            newAccountNeeded = True
+        conf['extension'] = 'pem'
+    else:
+        LOG.info("Using original private key naming convention (.key.rsa). You may rename to .key.pem for consistance purpose.")
+        conf['extension'] = 'rsa'
+
 
     key = client.jose.JWKRSA.load(account_key)
     if newAccountNeeded:
@@ -428,7 +442,7 @@ def save_to_s3(conf, s3_key, content, encrypt=False, kms_key='AES256'):
 
 def load_private_key(conf, domain):
     key = None
-    name = domain['name'] + ".key.rsa"
+    name = domain['name'] + ".key." + conf['extension']
 
     if 'reuse_key' in domain.keys() and domain['reuse_key'] == True:
         LOG.debug("Attempting to load private key from S3 for domain '{0}'".format(domain['name']))
