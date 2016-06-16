@@ -14,7 +14,8 @@
         },
         "KmsEncryptionKeyArn": {
             "Description": "Default KMS Encryption Key (arn) used to securely store your SSL private keys. Use 'AES256' for S3 automatic encryption",
-            "Type": "String"
+            "Type": "String",
+            "Default": "AES256"
         }
     },
     "Metadata" : {
@@ -50,7 +51,10 @@
                         "Sid": "DenyUnEncryptedPrivKeyUploads",
                         "Action": ["s3:PutObject"],
                         "Effect": "Deny",
-                        "Resource": { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "Bucket" } , "/*.key.pem" ]]},
+                        "Resource": [
+                            { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "Bucket" } , "/*.key.pem" ]]},
+                            { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "Bucket" } , "/*.key.rsa" ]]}
+                        ],
                         "Principal": "*",
                         "Condition": {
                             "Null": {

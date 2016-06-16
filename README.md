@@ -30,7 +30,7 @@ The configuration file is based on YAML. It should be easy to understand by revi
 
 ## Installation ##
 
-This project relies on third party projects that requires some files to be compiled. Since AWS Lambda runs on Amazon Linux 64 bit ([ref](http://docs.aws.amazon.com/lambda/latest/dg/current-supported-versions.html)), it's important that you have such instance running to prepare your Lambda function.
+This project relies on third party projects that requires some files to be compiled. Since AWS Lambda runs on Amazon Linux 64 bit ([ref](http://docs.aws.amazon.com/lambda/latest/dg/current-supported-versions.html)), it's important that you have such instance running to prepare your Lambda function and not a custom debian/ubuntu server as you may find some libraries incompatibilities).
 
     $> yum install libcffi-devel libffi-devel libyaml-devel gcc openssl-devel git
     $> virtualenv .env
@@ -38,17 +38,9 @@ This project relies on third party projects that requires some files to be compi
     $> pip install -r requirements.txt
     $> ./make_package.sh
 
-If you're development environment is running on Debian Linux, you need the following commands, but this may not be entirely compatible since the operating system distribution is different:
-
-    $> apt-get install -V python-virtualenv python-pip libssl-dev python-dev libffi-dev
-    $> virtualenv .env
-    $> source .env/bin/activate
-    $> pip install -r requirements.txt
-    $> ./make_package.sh
-
-Once this is done, all you have to do is to upload your lambda function (`letslambda.zip`) to your S3 bucket.
-
+Once this is done, all you have to do is to upload your lambda function to a S3 bucket.
     $> aws s3 cp letslambda.zip s3://bucket/
+
 Alternatively, you may use the Amazon Management Console to upload your package from the comfort of your web browser.
 
 And finally, let Amazon CloudFormation do the heavy job of deploying your Lambda function.
