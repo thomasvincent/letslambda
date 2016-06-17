@@ -6,7 +6,40 @@ All in all, the script talks to [Let's Encrypt](https://letsencrypt.org/) and Am
 
 ## Configuration ##
 The configuration file is based on YAML. It should be easy to understand by reviewing the provided configuration. Nonetheless, here is a short explanation of each configuration directive
+```yaml
+directory: https://acme-v01.api.letsencrypt.org/directory
+info:
+  - mailto:myemail@example.com
+domains:
+  - name: www.example.com
+    r53_zone: example.com
+    countryName: FR
+    reuse_key: true
+    elbs:
+      - name: elb_name
+        region: ap-southeast-2
+        port: 443
+  - name: api.anotherexample.com
+    r53_zone: anotherexample.com
+    countryName: AU
+    reuse_key: true
+    elbs:
+      - name: elb_name_2
+        region: ap-southeast-2
+        port: 443
+      - name: elb_name_3
+        region: ap-southeast-1
+        port: 443
+  - name: old.example.com
+    r53_zone: example.com
+    countryName: FR
+    reuse_key: false
+    elb: old_elb_name
+    elb_port: 8443
+    elb_region: us-east-1
+```
 
+### Configuring Let's encrypt ###
 `directory`: The Let's Encrypt directory endpoint to use to request the certificate issuance. This is useful when you need to switch between staging and production. Possible values are:
 
  - `https://acme-v01.api.letsencrypt.org/directory` for production
@@ -17,16 +50,38 @@ The configuration file is based on YAML. It should be easy to understand by revi
     info:
         - mailto:myemail@example.com
 
+### Configuring your domains ###
+Letslambda allows you to declare multiple host names that you wish to get a certificate for.
+
+Each is declared under the `domains` list.
+
+Here is the details for each domain.
+
 `domains`: a list of domain information.
 
- - `name`: The host name for which you want your certificate to be issued for.
+ - `- name`: The host name for which you want your certificate to be issued for.
  - `r53_zone`: the Route53 hosted zone name which contains the DNS entry for `name`.
- - `countryName`: This parameter is used for `countryName` in the [Certificate Signing Request](https://en.wikipedia.org/wiki/Certificate_signing_request) (CSR).
- - `elb`: Name of your Elastic Load Balancer.
- - `elb_port`: ELB listening port. If left unspecified, the default is 443 (HTTPS).
- - `elb_region`: the region is which your ELB has been deployed in. Default is the Lambda local region.
+ - `countryName`: This parameter is used for the `countryName` in the [Certificate Signing Request](https://en.wikipedia.org/wiki/Certificate_signing_request) (CSR). It's a 2 letters representation of the country name. It follows the [ISO 3166-1 alpha-2](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) standard.
  - `kmsKeyArn`: Your KMS key arn to encrypt the Let's Encrypt account key and your certificate private keys. You may also use `AES256` for AWS managed at rest encryption. Default is `AES256`.
  - `reuse_key`: The Lambda function will try to reuse the same private key to generate the new CSR. This is useful if you ever want to use Public Key Pinning (Mobile App development) and yet want to renew your certificates every X months
+
+### Configuring your ELBs ###
+You have 2 ways to get your server certificates deployed into one or more Elastic Load Balancer (ELB). However, this section is optional is you don't have any ELB.
+
+The initial release of Letslambda used to support only one ELB. This is done as follows:
+ - `elb`: Name of your Elastic Load Balancer.
+ - `elb_region`: the region is which your ELB has been deployed in. Default is the Lambda local region.
+ - `elb_port`: ELB listening port. If left unspecified, the default is `443` (HTTPS).
+
+Only **one** ELB is supported when configured this way.
+
+The newer and preferred way to declare the deployment of your server certificate into your ELB is done as follows:
+ - `elbs` which is the start of your ELB list.
+
+ And below, per ELB specific settings:
+ - `- name` is for the name of your ELB. This parameter should come first in the ELB list.
+ - `region` the AWS region code in which your ELB is deployed into. If missing, this defaults to the AWS region in which Letslambda runs.
+ - `port` which represents the ELB listener port. This port must already be configure ahead. If omitted, the default value is `443` (HTTPS).
 
 ## Installation ##
 
@@ -58,7 +113,7 @@ As part of the deployment process, the CloudFormation template will create 4 IAM
  - `LetsLambdaS3ReadManagedPolicy` This policy is used to access any objects in the S3 bucket. Encrypted objects such as private keys will remain inaccessible until `LetsLambdaKmsKeyManagedPolicy`is used in conjunction with this policy.
 
 ### Accessing your Private keys ###
-Having access to private keys is sensitive by definition. You should ensure that your private keys do not leak outside in any way. 
+Having access to private keys is sensitive by definition. You should ensure that your private keys do not leak outside in any way.
 
 To retrieve more easily your private keys from an EC2 instance, you should create/update an EC2 role and add both `LetsLambdaKmsKeyManagedPolicy` and `LetsLambdaS3ReadManagedPolicy`. This will allow your the EC2 instances running under the corresponding role/managed policies to access the private keys without any hard coded credentials.
 
@@ -68,4 +123,5 @@ To retrieve more easily your private keys from an EC2 instance, you should creat
 
 ### Contributors ###
 - [Peter Mounce](https://github.com/petemounce)
+
 

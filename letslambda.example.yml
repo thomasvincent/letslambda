@@ -3,10 +3,29 @@ base_path: letslambda
 info:
   - mailto:myemail@example.com
 domains:
-  - name: example.com
+  - name: www.example.com
     r53_zone: example.com
     countryName: FR
-    elb: lb_name
-    elb_port: 443
-    elb_region: eu-west-1
     reuse_key: true
+    elbs:
+      - name: elb_name
+        region: ap-southeast-2
+        port: 443
+  - name: api.anotherexample.com
+    r53_zone: anotherexample.com
+    countryName: AU
+    reuse_key: true
+    elbs:
+      - name: elb_name_2
+        region: ap-southeast-2
+        port: 443
+      - name: elb_name_3
+        region: ap-southeast-1
+        port: 443
+  - name: old.example.com
+    r53_zone: example.com
+    countryName: FR
+    reuse_key: false
+    elb: old_elb_name
+    elb_port: 8443
+    elb_region: us-east-1

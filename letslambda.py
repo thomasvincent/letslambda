@@ -305,18 +305,18 @@ def upload_to_iam(conf, domain, chain_certificate, certificate, key):
 
     return res
 
-def update_elb_server_certificate(conf, domain, server_certificate_arn):
+def update_elb_server_certificate(conf, elb_region, elb_name, elb_port, server_certificate_arn):
     """
     Assign the new SSL certificate to the desired ELB
     """
-    elb = boto3.client('elb', config=Config(signature_version='v4', region_name=domain['elb_region']))
+    elb = boto3.client('elb', config=Config(signature_version='v4', region_name=elb_region))
 
     timeout = 60
     while timeout > -1:
         try:
             res = elb.set_load_balancer_listener_ssl_certificate(
-                LoadBalancerName=domain['elb'],
-                LoadBalancerPort=domain['elb_port'],
+                LoadBalancerName=elb_name,
+                LoadBalancerPort=elb_port,
                 SSLCertificateId=server_certificate_arn)
             break
         except ClientError as e:
@@ -328,19 +328,19 @@ def update_elb_server_certificate(conf, domain, server_certificate_arn):
                 timeout = timeout - 1
                 continue
 
-            LOG.error("Failed to set server certificate '{0}' on ELB '{0}:{1}' in region '{2}'".format(server_certificate_arn, domain['elb'], domain['elb_port'], domain['elb_region']))
+            LOG.error("Failed to set server certificate '{0}' on ELB '{0}:{1}' in region '{2}'".format(server_certificate_arn, elb_name, elb_port, elb_region))
             LOG.error("Exception: {0}".format(e))
             return False
 
     if timeout < 0:
-        LOG.error("Could not set server certificate '{0}' within 60 seconds on ELB '{1}:{2}' in region '{3}'.".format(server_certificate_arn, domain['elb'], domain['elb_port'], domain['elb_region']))
+        LOG.error("Could not set server certificate '{0}' within 60 seconds on ELB '{1}:{2}' in region '{3}'.".format(server_certificate_arn, elb_name, elb_port, elb_region))
         return False
 
     LOG.debug("Set server certificate '{0}' on ELB '{1}:{2}' in region '{3}' in {4} seconds.".format(
         server_certificate_arn,
-        domain['elb'],
-        domain['elb_port'],
-        domain['elb_region'],
+        elb_name,
+        elb_port,
+        elb_region,
         60-timeout))
 
     return True
@@ -547,12 +547,6 @@ def lambda_handler(event, context):
         if 'reuse_key' not in domain.keys():
             domain['reuse_key'] = True
 
-        if 'elb_port' not in domain.keys():
-            domain['elb_port'] = 443
-
-        if 'elb_region' not in domain.keys():
-            domain['elb_region'] = conf['region']
-
         authorization_resource = get_authorization(acme_client, domain)
         challenge = get_dns_challenge(authorization_resource)
         res = answer_dns_challenge(conf, acme_client, domain, challenge)
@@ -571,7 +565,39 @@ def lambda_handler(event, context):
             LOG.error("An error occurred while saving your server certificate in IAM. Skipping domain '{0}'.".format(domain['name']))
             continue
 
+        # single ELB mode (compatibility)
         if 'elb' in domain.keys():
-            res = update_elb_server_certificate(conf, domain, iam_cert['ServerCertificateMetadata']['Arn'])
+            if 'elb_port' not in domain.keys():
+                domain['elb_port'] = 443
+                LOG.warning("The ELB '{0}' has no port set. Using '{1}' as a default.".format(domain['elb'], domain['elb_port']))
+
+            if 'elb_region' not in domain.keys():
+                domain['elb_region'] = conf['region']
+                LOG.warning("The ELB '{0}' has no region set. Using '{1}' as a default.".format(domain['elb'], domain['elb_region']))
+
+            res = update_elb_server_certificate(conf,
+                    domain['elb_region'],
+                    domain['elb'],
+                    domain['elb_port'],
+                    iam_cert['ServerCertificateMetadata']['Arn'])
             if res is not True:
                 LOG.error("An error occurred while attaching your server certificate to your ELB.")
+
+        # Muti ELB mode
+        if 'elbs' in domain.keys():
+            for elb in domain['elbs']:
+                if 'name' not in  elb.keys():
+                    LOG.error("The name of an ELB is missing. You should check {0}. Skipping this ELB.".format(conf['letslambda_config']))
+                    continue
+
+                if 'port' not in elb.keys():
+                    elb['port'] = 443
+                    LOG.warning("The ELB '{0}' has no port set. Using '{1}' as a default.".format(elb['name'], elb['port']))
+
+                if 'region' not in elb.keys():
+                    elb['region'] = conf['region']
+                    LOG.warning("The ELB '{0}' has no region set. Using '{1}' as a default.".format(elb['name'], elb['region']))
+
+                res = update_elb_server_certificate(conf, elb['region'], elb['name'], elb['port'], iam_cert['ServerCertificateMetadata']['Arn'])
+                if res is not True:
+                  LOG.error("An error occurred while attaching your server certificate to your ELB.")
