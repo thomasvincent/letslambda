@@ -83,7 +83,7 @@ def load_letsencrypt_account_key(conf):
         # but if not, then use the new naming of '.key.pem'
         account_key = load_from_s3(conf, 'account.key.pem')
         if account_key == None:
-            account_key = create_and_save_key(conf, "account.key.pem", conf['kms_key'])
+            account_key = create_and_save_key(conf, "account.key.pem", conf['kms_key'], 4096)
             newAccountNeeded = True
         conf['extension'] = 'pem'
     else:
@@ -405,12 +405,12 @@ def answer_dns_challenge(conf, client, domain, challenge):
 
     return True
 
-def create_and_save_key(conf, s3_key, kms_key='AES256'):
+def create_and_save_key(conf, s3_key, kms_key='AES256', key_size=2048):
     """
     Generate a RSA 4096 key for general purpose (account or CSR)
     """
     LOG.info("Generating new RSA key")
-    key = RSA.generate(4096).exportKey("PEM")
+    key = RSA.generate(key_size).exportKey("PEM")
     save_to_s3(conf, s3_key, key, True, kms_key)
     return key
 
@@ -449,7 +449,7 @@ def load_private_key(conf, domain):
         key = load_from_s3(conf, name)
 
     if key == None:
-        key = create_and_save_key(conf, name, domain['kmsKeyArn'])
+        key = create_and_save_key(conf, name, domain['kmsKeyArn'], domain['key_size'])
 
     return crypto.load_privatekey(crypto.FILETYPE_PEM, key)
 
@@ -546,6 +546,9 @@ def lambda_handler(event, context):
 
         if 'reuse_key' not in domain.keys():
             domain['reuse_key'] = True
+
+        if 'key_size' not in domain.keys():
+            domain['key_size'] = 2048
 
         authorization_resource = get_authorization(acme_client, domain)
         challenge = get_dns_challenge(authorization_resource)

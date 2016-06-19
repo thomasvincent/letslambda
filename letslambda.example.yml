@@ -7,6 +7,7 @@ domains:
     r53_zone: example.com
     countryName: FR
     reuse_key: true
+    key_size: 2048
     elbs:
       - name: elb_name
         region: ap-southeast-2
@@ -26,6 +27,7 @@ domains:
     r53_zone: example.com
     countryName: FR
     reuse_key: false
+    key_size: 4096
     elb: old_elb_name
     elb_port: 8443
     elb_region: us-east-1

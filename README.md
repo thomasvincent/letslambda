@@ -15,6 +15,7 @@ domains:
     r53_zone: example.com
     countryName: FR
     reuse_key: true
+    key_size: 2048
     elbs:
       - name: elb_name
         region: ap-southeast-2
@@ -34,6 +35,7 @@ domains:
     r53_zone: example.com
     countryName: FR
     reuse_key: false
+    key_size: 4096
     elb: old_elb_name
     elb_port: 8443
     elb_region: us-east-1
@@ -64,6 +66,7 @@ Here is the details for each domain.
  - `countryName`: This parameter is used for the `countryName` in the [Certificate Signing Request](https://en.wikipedia.org/wiki/Certificate_signing_request) (CSR). It's a 2 letters representation of the country name. It follows the [ISO 3166-1 alpha-2](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) standard.
  - `kmsKeyArn`: Your KMS key arn to encrypt the Let's Encrypt account key and your certificate private keys. You may also use `AES256` for AWS managed at rest encryption. Default is `AES256`.
  - `reuse_key`: The Lambda function will try to reuse the same private key to generate the new CSR. This is useful if you ever want to use Public Key Pinning (Mobile App development) and yet want to renew your certificates every X months
+ - `key_size`: Determine the private key size (in bits). Common values are `2048` or `4096`. Note that Amazon CloudFront [doesn't support certificates for keys longer than 2048](http://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/SecureConnections.html#CNAMEsAndHTTPS). If omitted, the default value is `2048` since it's secure and it maximises compatibility with the AWS services.
 
 ### Configuring your ELBs ###
 You have 2 ways to get your server certificates deployed into one or more Elastic Load Balancer (ELB). However, this section is optional is you don't have any ELB.
