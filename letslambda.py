@@ -288,7 +288,7 @@ def upload_to_iam(conf, domain, chain_certificate, certificate, key):
     iam = boto3.client('iam', config=Config(signature_version='v4', region_name=conf['region']))
 
     kwargs = {
-        'Path': '/',
+        'Path': '/cloudfront/',
         'ServerCertificateName': domain['name'] + "-" + datetime.utcnow().strftime("%Y-%m-%dT%H-%M-%S"),
         'CertificateBody': certificate,
         'PrivateKey': key
@@ -344,6 +344,61 @@ def update_elb_server_certificate(conf, elb_region, elb_name, elb_port, server_c
         60-timeout))
 
     return True
+
+def update_cf_server_certificate(conf, domain, cf_id, server_certificate_id):
+    """
+    Assign the new SSL certificate to the desired CloudFront distribution
+    """
+    cf = boto3.client('cloudfront', config=Config(signature_version='v4', region_name=conf['region']))
+
+    try:
+        res = cf.get_distribution(Id=cf_id)
+        cf_conf = res['Distribution']['DistributionConfig']
+    except ClientError as e:
+        print e
+
+    if res['Distribution']['Status'] != 'Deployed':
+        LOG.error("Could not set server certificate '{0}' on CloudFront distribution {1} as the current status is '{2}'.".format(server_certificate_id, cf_id, res['Distribution']['Status']))
+        return False
+
+    cf_conf['ViewerCertificate'] = {
+        'IAMCertificateId': server_certificate_id,
+        'SSLSupportMethod': 'sni-only',
+        'MinimumProtocolVersion': 'TLSv1'
+    }
+
+    kwargs = {
+        'DistributionConfig': cf_conf,
+        'Id': cf_id,
+        'IfMatch': res['ETag']
+    }
+
+    # CF api is not very helpful when a certificate cannot be attached to a distribution
+    # in that many errors are collated under the same error code. So, it's hard to tell
+    # if the certificate wasn't available yet, or if it's a genuine error.
+    timeout = 60
+    while timeout > -1:
+        try:
+            res = cf.update_distribution(**kwargs)
+            break
+        except ClientError as e:
+            if e.response['Error']['Code']  == 'InvalidViewerCertificate':
+                sleep(1)
+                timeout = timeout - 1
+                continue
+
+            LOG.error("Failed to set server certificate '{0}' on CloudFront distribution {1}".format(server_certificate_id, cf_id))
+            LOG.error("Exception: {0}".format(e))
+            exit(1)
+            return False
+
+    if timeout < 0:
+        LOG.error("Could not set server certificate '{0}' within 60 seconds on CloudFront distribution {1}".format(server_certificate_id, cf_id))
+        return False
+
+    LOG.debug("Set server certificate '{0}' on CloudFront distribution {1} in {2} seconds.".format(server_certificate_id, cf_id, 60-timeout))
+    return True
+
 
 def answer_dns_challenge(conf, client, domain, challenge):
     """
@@ -604,3 +659,9 @@ def lambda_handler(event, context):
                 res = update_elb_server_certificate(conf, elb['region'], elb['name'], elb['port'], iam_cert['ServerCertificateMetadata']['Arn'])
                 if res is not True:
                   LOG.error("An error occurred while attaching your server certificate to your ELB.")
+
+        if 'cfs' in domain.keys():
+            for cf in domain['cfs']:
+                res = update_cf_server_certificate(conf, domain, cf['id'], iam_cert['ServerCertificateMetadata']['ServerCertificateId'])
+                if res is not True:
+                    LOG.error("An error occurred while attaching your server certificate to your CloudFront distribution")
