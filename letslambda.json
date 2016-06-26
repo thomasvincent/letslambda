@@ -10,30 +10,30 @@
             "AllowedPattern": "[a-zA-Z0-9.-]*"
         },
         "FnPath": {
-            "Description": "Path and file name to the LetsLambda package. No heading '/'",
+            "Description": "Path and file name to the LetsLambda package. No heading '/'.",
             "Type": "String",
             "Default": "letslambda.zip"
         },
         "Bucket": {
-            "Description": "S3 Bucket name (not arn)",
+            "Description": "S3 Bucket name (not arn) where the YAML configuration is located. Also used as the default location to store your certificates and priavete keys.",
             "Type": "String",
             "MinLength": "3",
             "MaxLength": "63",
             "AllowedPattern": "[a-zA-Z0-9.-]*"
         },
         "Region": {
-            "Description": "Region short code name where the S3 bucket is located (ie: eu-west-1)",
+            "Description": "Region short code name where the S3 bucket is located (ie: eu-west-1).",
             "Type" : "String",
             "AllowedValues": ["ap-northeast-1", "ap-northeast-2", "ap-southeast-1", "ap-southeast-2",
                               "eu-central-1", "eu-west-1", "sa-east-1", "us-east-1", "us-west-1", "us-west-2"]
         },
         "ConfigFile": {
-            "Description": "Path to the YAML configuration file within the specified S3 bucket",
+            "Description": "Path to the YAML configuration file within the specified S3 bucket. No heading '/'.",
             "Type": "String",
             "Default": "letslambda.yml"
         },
         "KmsEncryptionKeyArn": {
-            "Description": "Default KMS Encryption Key (arn) used to securely store your SSL private keys. Use 'AES256' for S3 automatic encryption",
+            "Description": "Default KMS Encryption Key (arn) used to securely store your SSL private keys. Use 'AES256' for S3 automatic encryption.",
             "Type": "String",
             "Default": "AES256"
         }

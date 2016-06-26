@@ -101,10 +101,26 @@ Once this is done, all you have to do is to upload your lambda function to a S3 
 
 Alternatively, you may use the Amazon Management Console to upload your package from the comfort of your web browser.
 
-And finally, let Amazon CloudFormation do the heavy job of deploying your Lambda function.
+And finally, let Amazon CloudFormation do the heavy job of deploying the LetsLambda function.
 
-    $> aws cloudformation create-stack --stack-name letslambda --template-body  file://letslambda.json --parameters ParameterKey=Bucket,ParameterValue=bucket --capabilities CAPABILITY_IAM
+    $> aws cloudformation create-stack --stack-name letslambda --template-body  file://letslambda.json \
+           --parameters ParameterKey=FnBucket,ParameterValue=bucket_name \
+           ParameterKey=FnPath,ParameterValue=some/path/to/letslambda.zip \
+           ParameterKey=Bucket,ParameterValue=bucket_name \
+           ParameterKey=ConfigFile,ParameterValue=some/path/to/letslambda.yml \
+           ParameterKey=Region,ParameterValue=eu-west-1 \
+           ParameterKey=KmsEncryptionKeyArn,ParameterValue=arn:aws:kms:eu-central-1:123456789012:key/30df8784-b708-4bea-8506-b12cc04335a4 \
+           --capabilities CAPABILITY_IAM
+
 As a possible alternative, you may use the CloudFormation Management Console to deploy your Lambda function. Though, you should ensure that you deploy the IAM resources included in the template.
+
+The above parameters are:
+ - `FnBucket`: S3 Bucket name where the LetsLambda is stored (not arn). This bucket must be located in your CloudFormation/Lambda region.
+ - `FnPath': Path and file name to the LetsLambda package. No heading `/`
+ - `Bucket`: S3 Bucket name (not arn) where the YAML configuration is located. Also used as the default location to store your certificates and priavete keys.
+ - `Region`: Region short code name where the S3 bucket is located (ie: eu-west-1)
+ - `ConfigFile`: Path to the YAML configuration file within the specified S3 bucket. No heading `/`
+ - `KmsEncryptionKeyArn`: Default KMS Encryption Key (arn) used to securely store your SSL private keys. Use 'AES256' for S3 automatic encryption.
 
 ## Role and Managed Policies ##
 As part of the deployment process, the CloudFormation template will create 4 IAM managed policies and one Lambda execution role. Each managed policy has been crafted so you can access your resources securely. The Lambda execution role defines the privilege level for the Lambda function.
