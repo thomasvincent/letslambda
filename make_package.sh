@@ -10,5 +10,6 @@ mkdir $TARGET
 cp -pdr .env/lib/python2.7/site-packages/* "$TARGET/"
 cp -pdr .env/lib64/python2.7/site-packages/* "$TARGET/"
 cp -pdr .env/src/acme/acme/acme* "$TARGET/"
+cp -pd letslambda.py "$TARGET/"
 
 cd "$TARGET" && zip --recurse-paths -9 ../letslambda.zip ./

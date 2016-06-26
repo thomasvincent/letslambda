@@ -5,6 +5,7 @@ import boto3
 import hashlib
 import logging
 import os
+import re
 import requests
 import yaml
 from acme import challenges
@@ -568,11 +569,13 @@ def lambda_handler(event, context):
         LOG.info("Using {0} as default KMS key.".format(event['defaultkey']))
         kms_key = event['defaultkey']
 
-    if 'config' not in event:
+    if 'configfile' not in event:
+        LOG.warning("Using 'letslambda.yml' as the default configuration file.")
         letslambda_config = 'letslambda.yml'
     else:
-        letslambda_config = event['config']
+        letslambda_config = event['configfile']
 
+    letslambda_config = re.sub('^/', '', letslambda_config.replace('//', '/'))
 
     LOG.info("Retrieving configuration file from bucket '{0}' in region '{1}' ".format(s3_bucket, s3_region))
     s3_client = boto3.client('s3', config=Config(signature_version='s3v4', region_name=s3_region))
