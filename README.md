@@ -8,6 +8,7 @@ All in all, the script talks to [Let's Encrypt](https://letsencrypt.org/) and Am
 The configuration file is based on YAML. It should be easy to understand by reviewing the provided configuration. Nonetheless, here is a short explanation of each configuration directive
 ```yaml
 directory: https://acme-v01.api.letsencrypt.org/directory
+base_path: letsencrypt/
 info:
   - mailto:myemail@example.com
 domains:
@@ -16,6 +17,7 @@ domains:
     countryName: FR
     reuse_key: true
     key_size: 2048
+    base_path: letsencrypt/certificates/example.com/
     elbs:
       - name: elb_name
         region: ap-southeast-2
@@ -24,6 +26,7 @@ domains:
     r53_zone: anotherexample.com
     countryName: AU
     reuse_key: true
+    base_path: letsencrypt/certificates/
     elbs:
       - name: elb_name_2
         region: ap-southeast-2
@@ -47,6 +50,8 @@ domains:
  - `https://acme-v01.api.letsencrypt.org/directory` for production
  - `https://acme-staging.api.letsencrypt.org/directory` for development and tests
 
+`base_path`: This defines the location in your S3 bucket where the Let's encrypt account key stored. It also serves at the default location to store per domain private keys and issued certificates. If not specified, the root (`/`) of your S3 bucket will be used instead.
+
 `info`: The information to be used when the script is registering your account for the first time. You should provide a valid email or the registration may fail.
 
     info:
@@ -67,6 +72,7 @@ Here is the details for each domain.
  - `kmsKeyArn`: Your KMS key arn to encrypt the Let's Encrypt account key and your certificate private keys. You may also use `AES256` for AWS managed at rest encryption. Default is `AES256`.
  - `reuse_key`: The Lambda function will try to reuse the same private key to generate the new CSR. This is useful if you ever want to use Public Key Pinning (Mobile App development) and yet want to renew your certificates every X months
  - `key_size`: Determine the private key size (in bits). Common values are `2048` or `4096`. Note that Amazon CloudFront [doesn't support certificates for keys longer than 2048](http://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/SecureConnections.html#CNAMEsAndHTTPS). If omitted, the default value is `2048` since it's secure and it maximises compatibility with the AWS services.
+ - `base_path`: This defines the location in your S3 bucket where the domain private keys and issued certificate is saved. If not specified, it defaults to the global `base_path` (see above).
 
 ### Configuring your ELBs ###
 You have 2 ways to get your server certificates deployed into one or more Elastic Load Balancer (ELB). However, this section is optional is you don't have any ELB.
