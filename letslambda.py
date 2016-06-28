@@ -79,12 +79,12 @@ def load_letsencrypt_account_key(conf):
     newAccountNeeded = False
 
     # check if an 'old' .key.rsa is present and load it
-    account_key = load_from_s3(conf, 'account.key.rsa')
+    account_key = load_from_s3(conf, conf['base_path']+'account.key.rsa')
     if account_key == None:
         # but if not, then use the new naming of '.key.pem'
-        account_key = load_from_s3(conf, 'account.key.pem')
+        account_key = load_from_s3(conf, conf['base_path']+'account.key.pem')
         if account_key == None:
-            account_key = create_and_save_key(conf, "account.key.pem", conf['kms_key'], 4096)
+            account_key = create_and_save_key(conf, conf['base_path']+'account.key.pem', conf['kms_key'], 4096)
             newAccountNeeded = True
         conf['extension'] = 'pem'
     else:
@@ -273,10 +273,10 @@ def save_certificates_to_s3(conf, domain, chain_certificate, certificate):
     """
     if chain_certificate is not False:
         LOG.info("Saving certificate to S3")
-        save_to_s3(conf, domain['name']+".chain.pem", chain_certificate)
+        save_to_s3(conf, domain['base_path']+domain['name']+".chain.pem", chain_certificate)
 
     LOG.info("Saving chain certificate to S3")
-    save_to_s3(conf, domain['name']+".cert.pem", certificate)
+    save_to_s3(conf, domain['base_path']+domain['name']+".cert.pem", certificate)
 
 
 def upload_to_iam(conf, domain, chain_certificate, certificate, key):
@@ -498,14 +498,14 @@ def save_to_s3(conf, s3_key, content, encrypt=False, kms_key='AES256'):
 
 def load_private_key(conf, domain):
     key = None
-    name = domain['name'] + ".key." + conf['extension']
+    s3_key = domain['base_path'] + domain['name'] + ".key." + conf['extension']
 
     if 'reuse_key' in domain.keys() and domain['reuse_key'] == True:
         LOG.debug("Attempting to load private key from S3 for domain '{0}'".format(domain['name']))
-        key = load_from_s3(conf, name)
+        key = load_from_s3(conf, s3_key)
 
     if key == None:
-        key = create_and_save_key(conf, name, domain['kmsKeyArn'], domain['key_size'])
+        key = create_and_save_key(conf, s3_key, domain['kmsKeyArn'], domain['key_size'])
 
     return crypto.load_privatekey(crypto.FILETYPE_PEM, key)
 
@@ -545,6 +545,20 @@ def request_certificate(conf, domain, client, auth_resource):
 
     return (pem_chain_certificate, pem_certificate, pem_private_key)
 
+def clean_file_path(path):
+    """
+    Normalize a file path so it can be used with the S3 service
+    """
+    path = os.path.normpath(path)
+    path = re.sub('^/', '', path.replace('//', '/'))
+    return path
+
+def clean_dir_path(path):
+    """
+    Normalize a directory path so it can be used with the S3 service
+    """
+    return clean_file_path(path) + '/'
+
 def lambda_handler(event, context):
     if 'bucket' not in event:
         LOG.critical("No bucket name has been provided. Exiting.")
@@ -575,9 +589,9 @@ def lambda_handler(event, context):
     else:
         letslambda_config = event['configfile']
 
-    letslambda_config = re.sub('^/', '', letslambda_config.replace('//', '/'))
+    letslambda_config = clean_file_path(letslambda_config)
 
-    LOG.info("Retrieving configuration file from bucket '{0}' in region '{1}' ".format(s3_bucket, s3_region))
+    LOG.info("Retrieving configuration file '{0}' from bucket '{1}' in region '{2}' ".format(letslambda_config, s3_bucket, s3_region))
     s3_client = boto3.client('s3', config=Config(signature_version='s3v4', region_name=s3_region))
 
     conf = load_config(s3_client, s3_bucket, letslambda_config)
@@ -590,6 +604,11 @@ def lambda_handler(event, context):
     conf['s3_bucket'] = s3_bucket
     conf['letslambda_config'] = letslambda_config
     conf['kms_key'] = kms_key
+
+    if 'base_path' not in conf.keys():
+        conf['base_path'] = ''
+    else:
+        conf['base_path'] = clean_dir_path(conf['base_path'])
 
     account_key = load_letsencrypt_account_key(conf)
 
@@ -607,6 +626,11 @@ def lambda_handler(event, context):
 
         if 'key_size' not in domain.keys():
             domain['key_size'] = 2048
+
+        if 'base_path' not in domain.keys():
+            domain['base_path'] = conf['base_path']
+        else:
+            domain['base_path'] = clean_dir_path(domain['base_path'])
 
         authorization_resource = get_authorization(acme_client, domain)
         challenge = get_dns_challenge(authorization_resource)
