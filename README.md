@@ -22,6 +22,9 @@ domains:
       - name: elb_name
         region: ap-southeast-2
         port: 443
+    cfs:
+      - id: XXXXXXXXXXXXXX
+      - id: YYYYYYYYYYYYYY
   - name: api.anotherexample.com
     r53_zone: anotherexample.com
     countryName: AU
@@ -92,6 +95,15 @@ The newer and preferred way to declare the deployment of your server certificate
  - `region` the AWS region code in which your ELB is deployed into. If missing, this defaults to the AWS region in which Letslambda runs.
  - `port` which represents the ELB listener port. This port must already be configure ahead. If omitted, the default value is `443` (HTTPS).
 
+### Configuring your CloudFront distributions ###
+Just like Elastic Load Balancers, LetsLambda supports one or more CloudFront distributions as part of the configuration file.
+ - `cfs` which is the start of your CloudFront list. You may ommit this parameter if you don't have any CloudFront distribution.
+
+And for each CloudFront distribution:
+ - `- id` which represents your CloudFront distribution ID
+
+Unlike other AWS services, CloudFront requires some time to be fully deployed. Usually about 30 minutes but this may vary. LetsLambda will __not__ updated your distribution configuration if it's not in a deployed state (where pending configuration changes are being deployed).
+
 ## Installation ##
 
 This project relies on third party projects that requires some files to be compiled. Since AWS Lambda runs on Amazon Linux 64 bit ([ref](http://docs.aws.amazon.com/lambda/latest/dg/current-supported-versions.html)), it's important that you have such instance running to prepare your Lambda function and not a custom debian/ubuntu server as you may find some libraries incompatibilities).
@@ -147,6 +159,4 @@ To retrieve more easily your private keys from an EC2 instance, you should creat
  - [Aurélien Requiem](https://github.com/aureq/)
 
 ### Contributors ###
-- [Peter Mounce](https://github.com/petemounce)
-
-
+ - [Peter Mounce](https://github.com/petemounce)
