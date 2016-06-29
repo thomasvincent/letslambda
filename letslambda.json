@@ -192,7 +192,7 @@
         "LetsLambdaManagedPolicy": {
             "Type": "AWS::IAM::ManagedPolicy",
             "Properties": {
-                "Description" : "Allow lambda to access Route53, ELB and IAM services",
+                "Description" : "Allow lambda to access Route53, ELB, CloudFront and IAM services",
                 "Path" : "/",
                 "PolicyDocument" : {
                     "Version":"2012-10-17",
@@ -209,6 +209,9 @@
                                 "iam:UploadServerCertificate",
                                 "elasticloadbalancing:DescribeLoadBalancers",
                                 "elasticloadbalancing:SetLoadBalancerListenerSSLCertificate",
+                                "cloudfront:GetDistribution",
+                                "cloudfront:GetDistributionConfig",
+                                "cloudfront:UpdateDistribution",
                                 "route53:GetChange",
                                 "route53:ListHostedZonesByName",
                                 "route53:ListResourceRecordSets",
