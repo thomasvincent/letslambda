@@ -5,10 +5,11 @@ import boto3
 import hashlib
 import logging
 import os
+import pytz
 import re
 import requests
+import threading
 import yaml
-import pytz
 from acme import challenges
 from acme import client
 from acme import errors
@@ -687,12 +688,26 @@ def issue_certificates_handler(event, context):
         else:
             domain['base_path'] = clean_dir_path(domain['base_path'])
 
+        # start a separate thread to ensure private key is generated (if needed)
+        # while the dns challenge occur to maximize efficiency
+        private_key_thread = threading.Thread(target=load_private_key, args=(conf, domain,))
+        private_key_thread.setDaemon(True)
+        private_key_thread.start()
+
         authorization_resource = get_authorization(acme_client, domain)
         challenge = get_dns_challenge(authorization_resource)
         res = answer_dns_challenge(conf, acme_client, domain, challenge)
         if res is not True:
             LOG.error("An error occurred while answering the DNS challenge. Skipping domain '{0}'.".format(domain['name']))
             continue
+
+        time_spent = 0.0
+        while private_key_thread.is_alive() == True:
+            private_key_thread.join(0.1)
+            time_spent = time_spent + 0.1
+
+            if time_spent % 5 == 0:
+                LOG.debug("Waiting for the domain private key of '{0}' to be generated and saved in S3. Total time: {1:.2f}s".format(domain['name'], time_spent))
 
         (chain, certificate, key) = request_certificate(conf, domain, acme_client, authorization_resource)
         if key == False or certificate == False:
