@@ -9,6 +9,7 @@ The configuration file is based on YAML. It should be easy to understand by revi
 ```yaml
 directory: https://acme-v01.api.letsencrypt.org/directory
 base_path: letsencrypt/
+delete_expired_cert: True
 info:
   - mailto:myemail@example.com
 domains:
