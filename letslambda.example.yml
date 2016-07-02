@@ -1,6 +1,7 @@
 directory: https://acme-v01.api.letsencrypt.org/directory
 base_path: letsencrypt/
-delete_expired_cert: True
+delete_expired_cert: true
+concurrent_execution: 100
 info:
   - mailto:myemail@example.com
 domains:
