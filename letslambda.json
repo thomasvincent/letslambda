@@ -269,7 +269,7 @@
             "Type" : "AWS::Events::Rule",
             "Properties" : {
                 "Description" : "Monthly scheduler for certificate renewal",
-                "Name" : "LetsLambda-Scheduler",
+                "Name" : "LetsLambda-Issuance-Scheduler",
                 "ScheduleExpression" : "rate(30 days)",
                 "State" : "ENABLED",
                 "Targets" : [ {
@@ -283,6 +283,29 @@
                             "letslambda.yml"
                         ]},
                         "\", \"defaultkey\": \"", {"Ref": "KmsEncryptionKeyArn"},
+                        "\"}"
+                    ]]}
+                } ]
+            }
+        },
+        "Scheduler": {
+            "Type" : "AWS::Events::Rule",
+            "Properties" : {
+                "Description" : "Weekly scheduler to remove expired certificates",
+                "Name" : "LetsLambda-Expired-Scheduler",
+                "ScheduleExpression" : "rate(7 days)",
+                "State" : "ENABLED",
+                "Targets" : [ {
+                    "Arn": {"Fn::GetAtt": ["LetsLambdaFunction", "Arn"]},
+                    "Id": "LetsLambdaTarget",
+                    "Input": {"Fn::Join": ["", [
+                        "{\"action\": \"purge\"",
+                        ", \"bucket\": \"", {"Ref": "Bucket"},
+                        "\", \"region\": \"", {"Ref": "Region"},
+                        "\", \"configfile\": \"", {"Fn::If": [ "ConfigFileProvided",
+                            {"Ref": "ConfigFile"},
+                            "letslambda.yml"
+                        ]},
                         "\"}"
                     ]]}
                 } ]

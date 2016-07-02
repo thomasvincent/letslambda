@@ -8,6 +8,7 @@ import os
 import re
 import requests
 import yaml
+import pytz
 from acme import challenges
 from acme import client
 from acme import errors
@@ -390,7 +391,6 @@ def update_cf_server_certificate(conf, domain, cf_id, server_certificate_id):
 
             LOG.error("Failed to set server certificate '{0}' on CloudFront distribution {1}".format(server_certificate_id, cf_id))
             LOG.error("Exception: {0}".format(e))
-            exit(1)
             return False
 
     if timeout < 0:
@@ -559,7 +559,62 @@ def clean_dir_path(path):
     """
     return clean_file_path(path) + '/'
 
-def lambda_handler(event, context):
+def list_expired_server_certificates(conf):
+    """
+    Returns a complete list of IAM server certificates
+    """
+    iam = boto3.client('iam', config=Config(signature_version='v4', region_name=conf['region']))
+
+    server_certificates = []
+    now = datetime.now(pytz.UTC)
+
+    # this helps simulate expired certificates by moving 'now' one year in advance
+    # uncomment as needed
+    #now = now.replace(year = now.year + 1)
+    try:
+        result = iam.list_server_certificates(MaxItems=1)
+        while True:
+            for server_certificate in result['ServerCertificateMetadataList']:
+                if now > server_certificate['Expiration']:
+                    server_certificates.append(server_certificate)
+
+            if result['IsTruncated'] == False:
+                break
+
+            result = iam.list_server_certificates(Marker=result['Marker'], MaxItems=1)
+
+    except ClientError as e:
+        LOG.error("Failed to load the list of IAM server certificates.")
+        LOG.error("Error: {0}".format(e))
+        return False
+
+    return server_certificates
+
+def delete_server_certificate(conf, server_certificate):
+    """
+    Attempt to delete an IAM server certificate. It's important to note that a
+    server certificate cannot be deleted if it's being used by another AWS
+    resource, like an ELB or CloudFront.
+    """
+    iam = boto3.client('iam', config=Config(signature_version='v4', region_name=conf['region']))
+
+    try:
+        LOG.info("Attempting to delete '{0}'".format(server_certificate['ServerCertificateName']))
+        iam.delete_server_certificate(ServerCertificateName=server_certificate['ServerCertificateName'])
+
+    except ClientError as e:
+        LOG.error("Failed to delete IAM server certificate '{0}'".format(server_certificate['ServerCertificateName']))
+        LOG.error("Error: {0}".format(e))
+        return False
+
+    return True
+
+def issue_certificates_handler(event, context):
+    """
+    This is the event handler that will perform the DNS challenge and retrieve
+    the Let's Encrypt issued certificates
+    """
+
     if 'bucket' not in event:
         LOG.critical("No bucket name has been provided. Exiting.")
         exit(1)
@@ -692,3 +747,75 @@ def lambda_handler(event, context):
                 res = update_cf_server_certificate(conf, domain, cf['id'], iam_cert['ServerCertificateMetadata']['ServerCertificateId'])
                 if res is not True:
                     LOG.error("An error occurred while attaching your server certificate to your CloudFront distribution")
+
+def purge_expired_certificates_handler(event, context):
+    """
+    Iterate hrough the IAM certificates and attempt to remove the ones that have expired
+    """
+    if 'bucket' not in event:
+        LOG.critical("No bucket name has been provided. Exiting.")
+        exit(1)
+    s3_bucket = event['bucket']
+
+    if 'region' not in event.keys() and 'AWS_DEFAULT_REGION' not in os.environ.keys():
+        LOG.critical("Unable to determine AWS region code. Exiting.")
+        exit(1)
+    else:
+        if 'region' not in event.keys():
+            LOG.warning("Using local environment to determine AWS region code.")
+            s3_region = os.environ['AWS_DEFAULT_REGION']
+            LOG.warning("Local region set to '{0}'.".format(s3_region))
+        else:
+            s3_region = event['region']
+
+    if 'configfile' not in event:
+        LOG.warning("Using 'letslambda.yml' as the default configuration file.")
+        letslambda_config = 'letslambda.yml'
+    else:
+        letslambda_config = event['configfile']
+
+    letslambda_config = clean_file_path(letslambda_config)
+
+    LOG.info("Retrieving configuration file '{0}' from bucket '{1}' in region '{2}' ".format(letslambda_config, s3_bucket, s3_region))
+    s3_client = boto3.client('s3', config=Config(signature_version='s3v4', region_name=s3_region))
+
+    conf = load_config(s3_client, s3_bucket, letslambda_config)
+    if conf == None:
+        LOG.critical("Cannot load letslambda configuration. Exiting.")
+        exit(1)
+
+    conf['region'] = os.environ['AWS_DEFAULT_REGION']
+    conf['s3_client'] = s3_client
+    conf['s3_bucket'] = s3_bucket
+    conf['letslambda_config'] = letslambda_config
+
+    server_certificates = list_expired_server_certificates(conf)
+    if server_certificates == False:
+        LOG.critical("Cannot load the list of IAM server certificates. Exiting.")
+        exit(1)
+
+    if 'delete_expired_certificates' in conf.keys() and conf['delete_expired_certificates'] == True:
+        for server_certificate in server_certificates:
+            delete_server_certificate(conf, server_certificate)
+    else:
+        LOG.info("The following IAM server certificates have expired and should be removed")
+        for server_certificate in server_certificates:
+            LOG.warning("IAM Server certificate '{0}' has expired as of '{1}'".format(
+                server_certificate['ServerCertificateName'],
+                server_certificate['Expiration']))
+
+def lambda_handler(event, context):
+    """
+    This is the Lambda function handler from which all executions are routed.
+    The appropriate routing is determine by event['action']
+    """
+    routing = {
+        'issuance': issue_certificates_handler,
+        'purge': purge_expired_certificates_handler,
+        'renew': issue_certificates_handler
+    }
+
+    if 'action' in event.keys() and event['action'] in routing.keys():
+        routing[event['action']](event, context)
+    else:
+        issue_certificates_handler(event, context)

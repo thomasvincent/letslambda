@@ -55,6 +55,8 @@ domains:
 
 `base_path`: This defines the location in your S3 bucket where the Let's encrypt account key stored. It also serves at the default location to store per domain private keys and issued certificates. If not specified, the root (`/`) of your S3 bucket will be used instead.
 
+`delete_expired_cert`: This defines whether or not expired server certificates stored in IAM should be removed. By default, an AWS account can store up to 20 server certificates making this resource quite limited. And since a server certificate can only be added or removed (not updated), the renewal process may easily pass the maximum allows limit. If unspecified the default is `false` (do not remove). Server certificates stored in the S3 bucket aren't affected regardless of this value. If the server certificate is linked to an AWS service (ELB or CloudFront), the deletion will fail.
+
 `info`: The information to be used when the script is registering your account for the first time. You should provide a valid email or the registration may fail.
 
     info:
