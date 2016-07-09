@@ -36,6 +36,11 @@
             "Description": "Default KMS Encryption Key (arn) used to securely store your SSL private keys. Use 'AES256' for S3 automatic encryption.",
             "Type": "String",
             "Default": "AES256"
+        },
+        "TableName": {
+            "Description": "Name of the DynamoDB table where certificate issuance notifications are stored. (Stack is added to this value)",
+            "Type": "String",
+            "Default": "LetsLambda"
         }
     },
     "Metadata" : {
@@ -53,6 +58,10 @@
                 {
                     "Label": {"default": "Encryption settings" },
                     "Parameters": ["KmsEncryptionKeyArn" ]
+                },
+                {
+                    "Label": {"default": "Notification settings" },
+                    "Parameters": ["TableName" ]
                 }
             ],
             "ParameterLabels" : {
@@ -61,7 +70,8 @@
                 "Bucket": { "default": "S3 bucket name:" },
                 "Region": { "default": "S3 bucket region code:" },
                 "ConfigFile": { "default": "Path and file name:" },
-                "KmsEncryptionKeyArn": { "default": "Encryption provider:" }
+                "KmsEncryptionKeyArn": { "default": "Encryption provider:" },
+                "TableName": { "default": "Table name:" }
             }
         }
     },
@@ -71,6 +81,26 @@
         "KmsArnProvided": {"Fn::Not": [{"Fn::Equals": [{"Ref": "KmsEncryptionKeyArn"}, "AES256"]}]}
     },
     "Resources" : {
+        "LetsLambdaDynamoDBTable" : {
+            "Type" : "AWS::DynamoDB::Table",
+            "Properties" : {
+                "AttributeDefinitions" : [
+                {
+                    "AttributeName" : "domain",
+                    "AttributeType" : "S"
+                }],
+                "KeySchema" : [
+                {
+                    "AttributeName" : "domain",
+                    "KeyType" : "HASH"
+                }],
+                "ProvisionedThroughput" : {
+                    "ReadCapacityUnits" : "1",
+                    "WriteCapacityUnits" : "1"
+                },
+                "TableName" : {"Fn::Join": ["", [ {"Ref": "AWS::StackName"}, "-", {"Ref": "TableName"}]]}
+            }
+        },
         "DenyUnEncryptedPrivKeyUploadsBucketPolicy" : {
             "Type" : "AWS::S3::BucketPolicy",
             "Properties" : {
@@ -223,6 +253,66 @@
                 }
             }
         },
+        "LetsLambdaDynamoDBReadManagedPolicy": {
+            "Type": "AWS::IAM::ManagedPolicy",
+            "Properties": {
+                "Description" : "Allow lambda to access Route53, ELB, CloudFront, DynamoDB and IAM services",
+                "Path" : "/",
+                "PolicyDocument" : {
+                    "Version":"2012-10-17",
+                    "Statement" : [
+                        {
+                            "Effect" : "Allow",
+                            "Action" : [
+                                "dynamodb:GetItem"
+                            ],
+                            "Resource" : [ {"Fn::Join": ["", [
+                                "arn:aws:dynamodb:",
+                                {"Ref": "AWS::Region"},
+                                ":",
+                                {"Ref": "AWS::AccountId"},
+                                ":table/",
+                                {"Ref": "AWS::StackName"},
+                                "-",
+                                {"Ref": "TableName"}
+                                ]]}
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        "LetsLambdaDynamoDBWriteManagedPolicy": {
+            "Type": "AWS::IAM::ManagedPolicy",
+            "Properties": {
+                "Description" : "Allow lambda to access Route53, ELB, CloudFront, DynamoDB and IAM services",
+                "Path" : "/",
+                "PolicyDocument" : {
+                    "Version":"2012-10-17",
+                    "Statement" : [
+                        {
+                            "Effect" : "Allow",
+                            "Action" : [
+                                "dynamodb:PutItem",
+                                "dynamodb:UpdateItem",
+                                "dynamodb:UpdateTable"
+                            ],
+                            "Resource" : [ {"Fn::Join": ["", [
+                                "arn:aws:dynamodb:",
+                                {"Ref": "AWS::Region"},
+                                ":",
+                                {"Ref": "AWS::AccountId"},
+                                ":table/",
+                                {"Ref": "AWS::StackName"},
+                                "-",
+                                {"Ref": "TableName"}
+                                ]]}
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
         "LambdaExecutionRole": {
             "Type": "AWS::IAM::Role",
             "Properties": {
@@ -231,7 +321,9 @@
                     {"Ref": "LetsLambdaS3WriteManagedPolicy"},
                     {"Ref": "LetsLambdaS3ReadManagedPolicy"},
                     {"Ref": "LetsLambdaKmsKeyManagedPolicy"},
-                    {"Ref": "LetsLambdaKmsKeyDecryptManagedPolicy"}
+                    {"Ref": "LetsLambdaKmsKeyDecryptManagedPolicy"},
+                    {"Ref": "LetsLambdaDynamoDBReadManagedPolicy"},
+                    {"Ref": "LetsLambdaDynamoDBWriteManagedPolicy"}
                 ],
                 "AssumeRolePolicyDocument": {
                     "Version": "2012-10-17",
@@ -278,6 +370,15 @@
                     "Input": {"Fn::Join": ["", [
                         "{\"bucket\": \"", {"Ref": "Bucket"},
                         "\", \"region\": \"", {"Ref": "Region"},
+                        "\", \"notification_table\": \"",
+                            "arn:aws:dynamodb:",
+                            {"Ref": "AWS::Region"},
+                            ":",
+                            {"Ref": "AWS::AccountId"},
+                            ":table/",
+                            {"Ref": "AWS::StackName"},
+                            "-",
+                            {"Ref": "TableName"},
                         "\", \"configfile\": \"", {"Fn::If": [ "ConfigFileProvided",
                             {"Ref": "ConfigFile"},
                             "letslambda.yml"
@@ -313,5 +414,19 @@
         }
     },
     "Outputs": {
+        "NotificationTableArn": {
+            "Description": "DynamoDB table ARN where domain notifications are stored.",
+            "Value": {"Fn::Join": ["", [
+                "arn:aws:dynamodb:",
+                {"Ref": "AWS::Region"},
+                ":",
+                {"Ref": "AWS::AccountId"},
+                ":table/",
+                {"Ref": "AWS::StackName"},
+                "-",
+                {"Ref": "TableName"}
+                ]]
+            }
+        }
     }
 }
