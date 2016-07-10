@@ -610,6 +610,40 @@ def delete_server_certificate(conf, server_certificate):
 
     return True
 
+def update_dynamodb_table_throughput(arn, read_throughput, write_throughput):
+    """
+    Update the read and write throughput of a dynamodb table
+    """
+    matchobj = re.match(r'.*:dynamodb:(.*):\d{12}:table/(.*)', arn, re.M)
+    ddb_region = matchobj.group(1)
+    ddb_name = matchobj.group(2)
+
+    ddb = boto3.client('dynamodb', region_name=ddb_region)
+
+    timeout = 15
+    while timeout > -1:
+        try:
+            ddb.update_table(TableName=ddb_name, ProvisionedThroughput={'ReadCapacityUnits': read_throughput, 'WriteCapacityUnits': write_throughput})
+            break
+        except ClientError as e:
+            if e.response['Error']['Code'] == ValidationException:
+                LOG.warning("The DynamoDB table '{0}' throughput hasn't changed because it's already at the desired capacity. Read: '{1}, Write: '{2}'.".format(ddb_name, read_throughput, write_throughput))
+                break
+            elif e.response['Error']['Code'] == 'ResourceInUseException':
+                LOG.error("The DynamoDB table '{0}' throughput hasn't changed because it's already pending changes.".format(ddb_name))
+                sleep(1)
+                continue
+            else:
+                LOG.error("Failed to change DynamoDB table '{0}' throughput".format(ddb_name))
+                LOG.error("Exception: {0}".format(e))
+                return False
+
+    if timeout < 0:
+        LOG.error("Failed to change DynamoDB table '{0}' throughput within 15 seconds as the table is pending changes.".format(ddb_name))
+        return False
+    else:
+        return True
+
 def issue_certificates_handler(event, context):
     """
     This is the event handler that will perform the DNS challenge and retrieve
@@ -655,6 +689,11 @@ def issue_certificates_handler(event, context):
         LOG.critical("Cannot load letslambda configuration. Exiting.")
         exit(1)
 
+    if 'notification_table' not in event:
+        LOG.error("No DynamoDB table has been provided, so no notification will be issued.")
+    else:
+        conf['notification_table'] = event['notification_table']
+
     conf['region'] = os.environ['AWS_DEFAULT_REGION']
     conf['s3_client'] = s3_client
     conf['s3_bucket'] = s3_bucket
@@ -669,6 +708,11 @@ def issue_certificates_handler(event, context):
     account_key = load_letsencrypt_account_key(conf)
 
     acme_client = client.Client(conf['directory'], account_key)
+
+    # this is a hardcoded value for now
+    if len(conf['domains']) > 1:
+        update_dynamodb_table_throughput(5, 5)
+
     for domain in conf['domains']:
         if 'r53_zone' not in domain.keys():
             LOG.error("Missing parameter 'r53_zone' for domain '{0}'. Skipping domain.".format(domain['name']))
@@ -762,6 +806,11 @@ def issue_certificates_handler(event, context):
                 res = update_cf_server_certificate(conf, domain, cf['id'], iam_cert['ServerCertificateMetadata']['ServerCertificateId'])
                 if res is not True:
                     LOG.error("An error occurred while attaching your server certificate to your CloudFront distribution")
+
+    # lower to the minimum throughput
+    if len(conf['domains']) > 1:
+        update_dynamodb_table_throughput(1, 1)
+
 
 def purge_expired_certificates_handler(event, context):
     """
