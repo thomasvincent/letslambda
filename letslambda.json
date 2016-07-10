@@ -40,7 +40,7 @@
         "TableName": {
             "Description": "Name of the DynamoDB table where certificate issuance notifications are stored. (Stack is added to this value)",
             "Type": "String",
-            "Default": "LetsLambda"
+            "Default": "LetsLambdaNotifications"
         }
     },
     "Metadata" : {
@@ -293,6 +293,7 @@
                         {
                             "Effect" : "Allow",
                             "Action" : [
+                                "dynamodb:DescribeTable",
                                 "dynamodb:PutItem",
                                 "dynamodb:UpdateItem",
                                 "dynamodb:UpdateTable"
