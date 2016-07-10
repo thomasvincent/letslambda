@@ -131,6 +131,7 @@ And finally, let Amazon CloudFormation do the heavy job of deploying the LetsLam
            ParameterKey=ConfigFile,ParameterValue=some/path/to/letslambda.yml \
            ParameterKey=Region,ParameterValue=eu-west-1 \
            ParameterKey=KmsEncryptionKeyArn,ParameterValue=arn:aws:kms:eu-central-1:123456789012:key/30df8784-b708-4bea-8506-b12cc04335a4 \
+           ParameterKey=TableName,ParameterValue=LetsLambdaNotifications \
            --capabilities CAPABILITY_IAM
 
 As a possible alternative, you may use the CloudFormation Management Console to deploy your Lambda function. Though, you should ensure that you deploy the IAM resources included in the template.
@@ -142,6 +143,7 @@ The above parameters are:
  - `Region`: Region short code name where the S3 bucket is located (ie: eu-west-1)
  - `ConfigFile`: Path to the YAML configuration file within the specified S3 bucket. No heading `/`
  - `KmsEncryptionKeyArn`: Default KMS Encryption Key (arn) used to securely store your SSL private keys. Use 'AES256' for S3 automatic encryption.
+ - `TableName`: DynamoDB table name where certificate issuance is stored. This helps consumers to know when a new certificate has been issued.
 
 ## Role and Managed Policies ##
 As part of the deployment process, the CloudFormation template will create 4 IAM managed policies and one Lambda execution role. Each managed policy has been crafted so you can access your resources securely. The Lambda execution role defines the privilege level for the Lambda function.
