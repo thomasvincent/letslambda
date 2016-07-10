@@ -711,7 +711,7 @@ def issue_certificates_handler(event, context):
 
     # this is a hardcoded value for now
     if len(conf['domains']) > 1:
-        update_dynamodb_table_throughput(5, 5)
+        update_dynamodb_table_throughput(conf['notification_table'], 5, 5)
 
     for domain in conf['domains']:
         if 'r53_zone' not in domain.keys():
@@ -809,7 +809,7 @@ def issue_certificates_handler(event, context):
 
     # lower to the minimum throughput
     if len(conf['domains']) > 1:
-        update_dynamodb_table_throughput(1, 1)
+        update_dynamodb_table_throughput(conf['notification_table'], 1, 1)
 
 
 def purge_expired_certificates_handler(event, context):
