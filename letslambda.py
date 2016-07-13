@@ -9,6 +9,7 @@ import pytz
 import re
 import requests
 import threading
+import time
 import yaml
 from acme import challenges
 from acme import client
@@ -610,11 +611,11 @@ def delete_server_certificate(conf, server_certificate):
 
     return True
 
-def update_dynamodb_table_throughput(arn, read_throughput, write_throughput):
+def update_dynamodb_table_throughput(conf, read_throughput, write_throughput):
     """
     Update the read and write throughput of a dynamodb table
     """
-    matchobj = re.match(r'.*:dynamodb:(.*):\d{12}:table/(.*)', arn, re.M)
+    matchobj = re.match(r'.*:dynamodb:(.*):\d{12}:table/(.*)', conf['notification_table'], re.M)
     ddb_region = matchobj.group(1)
     ddb_name = matchobj.group(2)
 
@@ -643,6 +644,61 @@ def update_dynamodb_table_throughput(arn, read_throughput, write_throughput):
         return False
     else:
         return True
+
+def update_dynamodb_item(conf, domain):
+    """
+    Insert/update a dynamodb item into the LetsLambda notification table
+    """
+    matchobj = re.match(r'.*:dynamodb:(.*):\d{12}:table/(.*)', conf['notification_table'], re.M)
+    ddb_region = matchobj.group(1)
+    ddb_name = matchobj.group(2)
+
+    table = boto3.resource('dynamodb', region_name=ddb_region).Table(ddb_name)
+
+    kwargs = {
+        'Key': {
+            'domain': domain['name']
+        },
+        'UpdateExpression': 'set update_date=:d, reuse_key=:reuse_key, s3_region=:s3_region, s3_bucket=:b, key_path=:key_path, cert_path=:cert_path, chain_path=:chain_path',
+        'ExpressionAttributeValues': {
+            ':d': int(time.time()),
+            ':reuse_key': domain['reuse_key'],
+            ':s3_region': conf['region'],
+            ':b': conf['s3_bucket'],
+            ':key_path': domain['base_path'] + domain['name'] + ".key." + conf['extension'],
+            ':cert_path': domain['base_path'] + domain['name'] + ".cert." + conf['extension'],
+            ':chain_path': domain['base_path'] + domain['name'] + ".chain." + conf['extension']
+        },
+        'ReturnValues': 'NONE',
+        'ReturnConsumedCapacity': 'TOTAL'
+    }
+
+    timeout = 15
+    while timeout > -1:
+        try:
+            res = table.update_item(**kwargs)
+            break
+        except ClientError as e:
+            if e.response['Error']['Code']  == 'ProvisionedThroughputExceededException':
+                timeout = timeout -1
+                sleep(1)
+                continue
+
+            LOG.error("An error has occured while updating DynamoDB table '{0}'".format(ddb_name))
+            LOG.error("Exception: {0}".format(e))
+            return False
+
+    if timeout < 0:
+        LOG.error("Failed to update DynamoDB table within 15 seconds")
+        return False
+
+    if 'ResponseMetadata' not in res.keys() or 'HTTPStatusCode' not in res['ResponseMetadata'].keys():
+        LOG.critical("Cannot determine DynamoDB operation result.")
+        return None
+    else:
+        LOG.debug("RequestID: '{0}'".format(res['ResponseMetadata']['RequestId']))
+        return True
+
 
 def issue_certificates_handler(event, context):
     """
@@ -711,7 +767,7 @@ def issue_certificates_handler(event, context):
 
     # this is a hardcoded value for now
     if len(conf['domains']) > 1:
-        update_dynamodb_table_throughput(conf['notification_table'], 5, 5)
+        update_dynamodb_table_throughput(conf, 5, 5)
 
     for domain in conf['domains']:
         if 'r53_zone' not in domain.keys():
@@ -759,6 +815,7 @@ def issue_certificates_handler(event, context):
             continue
 
         save_certificates_to_s3(conf, domain, chain, certificate)
+        update_dynamodb_item(conf, domain)
         iam_cert = upload_to_iam(conf, domain, chain, certificate, key)
         if iam_cert is False or iam_cert['ResponseMetadata']['HTTPStatusCode'] is not 200:
             LOG.error("An error occurred while saving your server certificate in IAM. Skipping domain '{0}'.".format(domain['name']))
@@ -809,7 +866,7 @@ def issue_certificates_handler(event, context):
 
     # lower to the minimum throughput
     if len(conf['domains']) > 1:
-        update_dynamodb_table_throughput(conf['notification_table'], 1, 1)
+        update_dynamodb_table_throughput(conf, 1, 1)
 
 
 def purge_expired_certificates_handler(event, context):
