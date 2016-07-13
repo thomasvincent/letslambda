@@ -661,7 +661,7 @@ def update_dynamodb_item(conf, domain):
         },
         'UpdateExpression': 'set update_date=:d, reuse_key=:reuse_key, s3_region=:s3_region, s3_bucket=:b, key_path=:key_path, cert_path=:cert_path, chain_path=:chain_path',
         'ExpressionAttributeValues': {
-            ':d': int(time.time()),
+            ':d': int(time.gmtime()),
             ':reuse_key': domain['reuse_key'],
             ':s3_region': conf['region'],
             ':b': conf['s3_bucket'],
