@@ -1,6 +1,6 @@
 {
     "AWSTemplateFormatVersion" : "2010-09-09",
-    "Description" : "CloudFormation template for letslambda - 0.2",
+    "Description" : "CloudFormation template for letslambda - 0.2.1",
     "Parameters": {
         "FnBucket": {
             "Description": "S3 Bucket name where the LetsLambda is stored (not arn). This bucket must be located in your CloudFormation/Lambda region.",
@@ -13,6 +13,11 @@
             "Description": "Path and file name to the LetsLambda package. No heading '/'.",
             "Type": "String",
             "Default": "letslambda.zip"
+        },
+        "FnName": {
+            "Description": "Unique Name for your Lambda function.",
+            "Type": "String",
+            "Default": "LetsLambda"
         },
         "Bucket": {
             "Description": "S3 Bucket name (not arn) where the YAML configuration is located. Also used as the default location to store your certificates and priavete keys.",
@@ -53,7 +58,7 @@
                 },
                 {
                     "Label": {"default": "LetsLambda configuration settings" },
-                    "Parameters": ["Bucket", "Region", "ConfigFile" ]
+                    "Parameters": ["Bucket", "Region", "ConfigFile", "FnName" ]
                 },
                 {
                     "Label": {"default": "Encryption settings" },
@@ -67,6 +72,7 @@
             "ParameterLabels" : {
                 "FnBucket": { "default": "S3 bucket name:" },
                 "FnPath": { "default": "Path and file name:" },
+                "FnName": { "default": "Lambda function name:" },
                 "Bucket": { "default": "S3 bucket name:" },
                 "Region": { "default": "S3 bucket region code:" },
                 "ConfigFile": { "default": "Path and file name:" },
@@ -77,6 +83,7 @@
     },
     "Conditions": {
         "FnPathProvided": {"Fn::Not": [{"Fn::Equals": [{"Ref": "FnPath"}, ""]}]},
+        "FnNameProvided": {"Fn::Not": [{"Fn::Equals": [{"Ref": "FnName"}, ""]}]},
         "ConfigFileProvided": {"Fn::Not": [{"Fn::Equals": [{"Ref": "ConfigFile"}, ""]}]},
         "KmsArnProvided": {"Fn::Not": [{"Fn::Equals": [{"Ref": "KmsEncryptionKeyArn"}, "AES256"]}]}
     },
@@ -248,6 +255,23 @@
                                 "route53:ChangeResourceRecordSets"
                             ],
                             "Resource" : [ "*" ]
+                        },
+                        {
+                            "Effect" : "Allow",
+                            "Action" : [
+                                "lambda:InvokeFunction"
+                            ],
+                            "Resource" : [ {"Fn::Join": ["", [
+				"arn:aws:lambda:",
+                                {"Ref": "AWS::Region"},
+                                ":",
+                                {"Ref": "AWS::AccountId"},
+				":function:",
+				{"Fn::If": [ "FnNameProvided",
+				    {"Ref": "FnName"},
+				    "LetsLambda"
+				]}
+			    ]]}]
                         }
                     ]
                 }
@@ -343,6 +367,10 @@
         "LetsLambdaFunction": {
             "Type": "AWS::Lambda::Function",
             "Properties" : {
+                "FunctionName": {"Fn::If": [ "FnNameProvided",
+                    {"Ref": "FnName"},
+                    "LetsLambda"
+                ]},
                 "Description" : "Renew all certificates from configuration via letsencrypt ACME",
                 "Handler" : "letslambda.lambda_handler",
                 "MemorySize" : 128,
