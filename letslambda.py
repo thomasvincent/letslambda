@@ -2,7 +2,9 @@
 
 import base64
 import boto3
+import datetime
 import hashlib
+import json
 import logging
 import os
 import pytz
@@ -503,7 +505,7 @@ def load_private_key(conf, domain):
     s3_key = domain['base_path'] + domain['name'] + ".key." + conf['extension']
 
     if 'reuse_key' in domain.keys() and domain['reuse_key'] == True:
-        LOG.debug("Attempting to load private key from S3 for domain '{0}'".format(domain['name']))
+        LOG.debug("Attempting to load private key from S3 '{0}' for domain '{1}'".format(s3_key, domain['name']))
         key = load_from_s3(conf, s3_key)
 
     if key == None:
@@ -661,7 +663,7 @@ def update_dynamodb_item(conf, domain):
         },
         'UpdateExpression': 'set update_date=:d, reuse_key=:reuse_key, s3_region=:s3_region, s3_bucket=:b, key_path=:key_path, cert_path=:cert_path, chain_path=:chain_path',
         'ExpressionAttributeValues': {
-            ':d': int(time.gmtime()),
+            ':d': int(time.mktime(time.gmtime())),
             ':reuse_key': domain['reuse_key'],
             ':s3_region': conf['region'],
             ':b': conf['s3_bucket'],
@@ -751,10 +753,103 @@ def issue_certificates_handler(event, context):
         conf['notification_table'] = event['notification_table']
 
     conf['region'] = os.environ['AWS_DEFAULT_REGION']
-    conf['s3_client'] = s3_client
     conf['s3_bucket'] = s3_bucket
     conf['letslambda_config'] = letslambda_config
     conf['kms_key'] = kms_key
+
+    if 'base_path' not in conf.keys():
+        conf['base_path'] = ''
+    else:
+        conf['base_path'] = clean_dir_path(conf['base_path'])
+
+    for domain in conf['domains']:
+        payload = event
+        payload['action'] = 'issue_certificate'
+        payload['domain'] = domain
+        payload['conf'] = conf
+        payload['conf'].pop('domains', None)
+
+        lambda_payload = json.dumps(payload, ensure_ascii=False)
+
+        lambda_client = boto3.client('lambda')
+
+        try:
+            r = lambda_client.invoke(
+                FunctionName=context.function_name,
+                InvocationType='Event',
+                LogType='Tail',
+                Payload=lambda_payload)
+
+            LOG.debug("Execution in progress for domain '{0}'. RequestId: '{1}', StatusCode: '{2}'".format(
+                domain['name'],
+                r['ResponseMetadata']['RequestId'],
+                r['StatusCode']
+            ))
+        except ClientError as e:
+            LOG.error("Failed to execute lambda function '{0}'. Skipping domain '{1}'.".format(context.function_name, domain['name']))
+            LOG.error("Error: {0}".format(e))
+            continue
+
+
+def issue_certificate_handler(event, context):
+    """
+    This is the event handler that will perform the DNS challenge and retrieve
+    the Let's Encrypt issued certificates
+
+    """
+
+    if 'bucket' not in event:
+        LOG.critical("No bucket name has been provided. Exiting.")
+        exit(1)
+    s3_bucket = event['bucket']
+
+    if 'region' not in event.keys() and 'AWS_DEFAULT_REGION' not in os.environ.keys():
+        LOG.critical("Unable to determine AWS region code. Exiting.")
+        exit(1)
+    else:
+        if 'region' not in event.keys():
+            LOG.warning("Using local environment to determine AWS region code.")
+            s3_region = os.environ['AWS_DEFAULT_REGION']
+            LOG.warning("Local region set to '{0}'.".format(s3_region))
+        else:
+            s3_region = event['region']
+
+    if 'defaultkey' not in event:
+        LOG.warning("No default KMS key provided, defaulting to 'AES256'.")
+        kms_key = 'AES256'
+    else:
+        LOG.info("Using {0} as default KMS key.".format(event['defaultkey']))
+        kms_key = event['defaultkey']
+
+
+    s3_client = boto3.client('s3', config=Config(signature_version='s3v4', region_name=s3_region))
+
+    try:
+        conf = event['conf']
+    except KeyError as e:
+        LOG.warning("No configuration statement was provided, trying to load a default one.")
+
+        if 'configfile' not in event:
+            LOG.warning("Using 'letslambda.yml' as the default configuration file.")
+            letslambda_config = 'letslambda.yml'
+        else:
+            letslambda_config = event['configfile']
+
+        letslambda_config = clean_file_path(letslambda_config)
+
+        LOG.info("Retrieving configuration file '{0}' from bucket '{1}' in region '{2}' ".format(letslambda_config, s3_bucket, s3_region))
+        conf = load_config(s3_client, s3_bucket, letslambda_config)
+
+        if conf == None:
+            LOG.critical("Cannot load letslambda configuration. Exiting.")
+            exit(1)
+
+    if 'notification_table' not in event:
+        LOG.error("No DynamoDB table has been provided, so no notification will be issued.")
+    else:
+        conf['notification_table'] = event['notification_table']
+
+    conf['s3_client'] = s3_client
 
     if 'base_path' not in conf.keys():
         conf['base_path'] = ''
@@ -765,108 +860,101 @@ def issue_certificates_handler(event, context):
 
     acme_client = client.Client(conf['directory'], account_key)
 
-    # this is a hardcoded value for now
-    if len(conf['domains']) > 1:
-        update_dynamodb_table_throughput(conf, 5, 5)
+    domain = event['domain']
 
-    for domain in conf['domains']:
-        if 'r53_zone' not in domain.keys():
-            LOG.error("Missing parameter 'r53_zone' for domain '{0}'. Skipping domain.".format(domain['name']))
-            continue
+    if 'r53_zone' not in domain.keys():
+        LOG.critical("Missing parameter 'r53_zone' for domain '{0}'. Skipping domain.".format(domain['name']))
+        exit(1)
 
-        if 'kmsKeyArn' not in domain.keys():
-            domain['kmsKeyArn'] = conf['kms_key']
+    if 'kmsKeyArn' not in domain.keys():
+        domain['kmsKeyArn'] = conf['kms_key']
 
-        if 'reuse_key' not in domain.keys():
-            domain['reuse_key'] = True
+    if 'reuse_key' not in domain.keys():
+        domain['reuse_key'] = True
 
-        if 'key_size' not in domain.keys():
-            domain['key_size'] = 2048
+    if 'key_size' not in domain.keys():
+        domain['key_size'] = 2048
 
-        if 'base_path' not in domain.keys():
-            domain['base_path'] = conf['base_path']
-        else:
-            domain['base_path'] = clean_dir_path(domain['base_path'])
+    if 'base_path' not in domain.keys():
+        domain['base_path'] = conf['base_path']
+    else:
+        domain['base_path'] = clean_dir_path(domain['base_path'])
 
-        # start a separate thread to ensure private key is generated (if needed)
-        # while the dns challenge occur to maximize efficiency
-        private_key_thread = threading.Thread(target=load_private_key, args=(conf, domain,))
-        private_key_thread.setDaemon(True)
-        private_key_thread.start()
+    # start a separate thread to ensure private key is generated (if needed)
+    # while the dns challenge occur to maximize efficiency
+    private_key_thread = threading.Thread(target=load_private_key, args=(conf, domain,))
+    private_key_thread.setDaemon(True)
+    private_key_thread.start()
 
-        authorization_resource = get_authorization(acme_client, domain)
-        challenge = get_dns_challenge(authorization_resource)
-        res = answer_dns_challenge(conf, acme_client, domain, challenge)
+    authorization_resource = get_authorization(acme_client, domain)
+    challenge = get_dns_challenge(authorization_resource)
+    res = answer_dns_challenge(conf, acme_client, domain, challenge)
+    if res is not True:
+        LOG.critical("An error occurred while answering the DNS challenge. Skipping domain '{0}'.".format(domain['name']))
+        exit(1)
+
+    time_spent = 0.0
+    while private_key_thread.is_alive() == True:
+        private_key_thread.join(0.1)
+        time_spent = time_spent + 0.1
+
+        if time_spent % 5 == 0:
+            LOG.debug("Waiting for the domain private key of '{0}' to be generated and saved in S3. Total time: {1:.2f}s".format(domain['name'], time_spent))
+
+    (chain, certificate, key) = request_certificate(conf, domain, acme_client, authorization_resource)
+    if key == False or certificate == False:
+        LOG.critical("An error occurred while requesting the signed certificate. Skipping domain '{0}'.".format(domain['name']))
+        exit(1)
+
+    save_certificates_to_s3(conf, domain, chain, certificate)
+    update_dynamodb_item(conf, domain)
+    iam_cert = upload_to_iam(conf, domain, chain, certificate, key)
+    if iam_cert is False or iam_cert['ResponseMetadata']['HTTPStatusCode'] is not 200:
+        LOG.critical("An error occurred while saving your server certificate in IAM. Skipping domain '{0}'.".format(domain['name']))
+        exit(1)
+
+    # single ELB mode (compatibility)
+    if 'elb' in domain.keys():
+        if 'elb_port' not in domain.keys():
+            domain['elb_port'] = 443
+            LOG.warning("The ELB '{0}' has no port set. Using '{1}' as a default.".format(domain['elb'], domain['elb_port']))
+
+        if 'elb_region' not in domain.keys():
+            domain['elb_region'] = conf['region']
+            LOG.warning("The ELB '{0}' has no region set. Using '{1}' as a default.".format(domain['elb'], domain['elb_region']))
+
+        res = update_elb_server_certificate(conf,
+                domain['elb_region'],
+                domain['elb'],
+                domain['elb_port'],
+                iam_cert['ServerCertificateMetadata']['Arn'])
         if res is not True:
-            LOG.error("An error occurred while answering the DNS challenge. Skipping domain '{0}'.".format(domain['name']))
-            continue
+            LOG.error("An error occurred while attaching your server certificate to your ELB.")
 
-        time_spent = 0.0
-        while private_key_thread.is_alive() == True:
-            private_key_thread.join(0.1)
-            time_spent = time_spent + 0.1
+    # Muti ELB mode
+    if 'elbs' in domain.keys():
+        for elb in domain['elbs']:
+            if 'name' not in  elb.keys():
+                LOG.error("The name of an ELB is missing. You should check {0}. Skipping this ELB.".format(conf['letslambda_config']))
+                continue
 
-            if time_spent % 5 == 0:
-                LOG.debug("Waiting for the domain private key of '{0}' to be generated and saved in S3. Total time: {1:.2f}s".format(domain['name'], time_spent))
+            if 'port' not in elb.keys():
+                elb['port'] = 443
+                LOG.warning("The ELB '{0}' has no port set. Using '{1}' as a default.".format(elb['name'], elb['port']))
 
-        (chain, certificate, key) = request_certificate(conf, domain, acme_client, authorization_resource)
-        if key == False or certificate == False:
-            LOG.error("An error occurred while requesting the signed certificate. Skipping domain '{0}'.".format(domain['name']))
-            continue
+            if 'region' not in elb.keys():
+                elb['region'] = conf['region']
+                LOG.warning("The ELB '{0}' has no region set. Using '{1}' as a default.".format(elb['name'], elb['region']))
 
-        save_certificates_to_s3(conf, domain, chain, certificate)
-        update_dynamodb_item(conf, domain)
-        iam_cert = upload_to_iam(conf, domain, chain, certificate, key)
-        if iam_cert is False or iam_cert['ResponseMetadata']['HTTPStatusCode'] is not 200:
-            LOG.error("An error occurred while saving your server certificate in IAM. Skipping domain '{0}'.".format(domain['name']))
-            continue
-
-        # single ELB mode (compatibility)
-        if 'elb' in domain.keys():
-            if 'elb_port' not in domain.keys():
-                domain['elb_port'] = 443
-                LOG.warning("The ELB '{0}' has no port set. Using '{1}' as a default.".format(domain['elb'], domain['elb_port']))
-
-            if 'elb_region' not in domain.keys():
-                domain['elb_region'] = conf['region']
-                LOG.warning("The ELB '{0}' has no region set. Using '{1}' as a default.".format(domain['elb'], domain['elb_region']))
-
-            res = update_elb_server_certificate(conf,
-                    domain['elb_region'],
-                    domain['elb'],
-                    domain['elb_port'],
-                    iam_cert['ServerCertificateMetadata']['Arn'])
+            res = update_elb_server_certificate(conf, elb['region'], elb['name'], elb['port'], iam_cert['ServerCertificateMetadata']['Arn'])
             if res is not True:
-                LOG.error("An error occurred while attaching your server certificate to your ELB.")
+              LOG.error("An error occurred while attaching your server certificate to your ELB.")
 
-        # Muti ELB mode
-        if 'elbs' in domain.keys():
-            for elb in domain['elbs']:
-                if 'name' not in  elb.keys():
-                    LOG.error("The name of an ELB is missing. You should check {0}. Skipping this ELB.".format(conf['letslambda_config']))
-                    continue
-
-                if 'port' not in elb.keys():
-                    elb['port'] = 443
-                    LOG.warning("The ELB '{0}' has no port set. Using '{1}' as a default.".format(elb['name'], elb['port']))
-
-                if 'region' not in elb.keys():
-                    elb['region'] = conf['region']
-                    LOG.warning("The ELB '{0}' has no region set. Using '{1}' as a default.".format(elb['name'], elb['region']))
-
-                res = update_elb_server_certificate(conf, elb['region'], elb['name'], elb['port'], iam_cert['ServerCertificateMetadata']['Arn'])
-                if res is not True:
-                  LOG.error("An error occurred while attaching your server certificate to your ELB.")
-
-        if 'cfs' in domain.keys():
-            for cf in domain['cfs']:
-                res = update_cf_server_certificate(conf, domain, cf['id'], iam_cert['ServerCertificateMetadata']['ServerCertificateId'])
-                if res is not True:
-                    LOG.error("An error occurred while attaching your server certificate to your CloudFront distribution")
-
-    # lower to the minimum throughput
-    if len(conf['domains']) > 1:
-        update_dynamodb_table_throughput(conf, 1, 1)
+    if 'cfs' in domain.keys():
+        for cf in domain['cfs']:
+            res = update_cf_server_certificate(conf, domain, cf['id'], iam_cert['ServerCertificateMetadata']['ServerCertificateId'])
+            if res is not True:
+                LOG.error("An error occurred while attaching your server certificate to your CloudFront distribution")
 
 
 def purge_expired_certificates_handler(event, context):
@@ -931,9 +1019,9 @@ def lambda_handler(event, context):
     The appropriate routing is determine by event['action']
     """
     routing = {
-        'issuance': issue_certificates_handler,
-        'purge': purge_expired_certificates_handler,
-        'renew': issue_certificates_handler
+        'purge': purge_expired_certificates_handler, # removes expired certs. this is declared in the cloudformation template
+        'issue_certificates': issue_certificates_handler, # issue multiple certificates. this is the routing path
+        'issue_certificate': issue_certificate_handler # issue a single certificate. this is usually executed via 'issue_certificates' routing path
     }
 
     if 'action' in event.keys() and event['action'] in routing.keys():
