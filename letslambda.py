@@ -554,14 +554,20 @@ def clean_file_path(path):
     Normalize a file path so it can be used with the S3 service
     """
     path = os.path.normpath(path)
-    path = re.sub('^/', '', path.replace('//', '/'))
+    path = re.sub('^.$', '', path)
+    path = path.replace('//', '/')
+    path = re.sub('^/', '', path)
     return path
 
 def clean_dir_path(path):
     """
     Normalize a directory path so it can be used with the S3 service
     """
-    return clean_file_path(path) + '/'
+    path = clean_file_path(path)
+    if path == '':
+        return path
+    else:
+        return path + '/'
 
 def list_expired_server_certificates(conf):
     """
