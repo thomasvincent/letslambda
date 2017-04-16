@@ -1,8 +1,18 @@
-letslambda.yml
-.env
-src
-*.sw?
+# Standard Python stuff
 *.pyc
+/.env/
+/*.egg-info/
+/.eggs/
+/build/
+/dist/
+
+# editor stuff
+*.sw?
+
 run.py
-letslambda.zip
-tmp/
+
+# make sure users don't commit private key material, or configuration
+*.pem
+*.der
+*.key
+letslambda.yml
