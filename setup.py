@@ -10,6 +10,7 @@ readme = codecs.open(os.path.join(here, 'README.md'), encoding='utf-8').read()
 install_requires = [
     'acme>=0.11,<0.12',
     'boto3>=1,<2',
+    'ovh>=0.4.7,<0.5',
     'pycrypto==2.6.1',
     'pyOpenSSL',
     'pytz',
