@@ -6,7 +6,8 @@ info:
   - mailto:myemail@example.com
 domains:
   - name: www.example.com
-    r53_zone: example.com
+    dns_zone: example.com
+    dns_provider: route53
     countryName: FR
     reuse_key: true
     key_size: 2048
@@ -16,7 +17,8 @@ domains:
         region: ap-southeast-2
         port: 443
   - name: api.anotherexample.com
-    r53_zone: anotherexample.com
+    dns_zone: anotherexample.com
+    dns_provider: ovh
     countryName: AU
     reuse_key: true
     base_path: base_path/certificates/
@@ -28,7 +30,8 @@ domains:
         region: ap-southeast-1
         port: 443
   - name: old.example.com
-    r53_zone: example.com
+    dns_zone: example.com
+    dns_provider: route53
     countryName: FR
     reuse_key: false
     key_size: 4096
