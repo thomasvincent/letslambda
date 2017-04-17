@@ -27,14 +27,12 @@ from OpenSSL import crypto
 from time import sleep
 
 LOG = logging.getLogger("letslambda")
-LOG.setLevel(logging.DEBUG)
 handler = logging.StreamHandler()
 handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-# add formatter to ch
 handler.setFormatter(formatter)
-# add ch to logger
 LOG.addHandler(handler)
+LOG.setLevel(logging.DEBUG)
 
 def load_from_s3(conf, s3_key):
     """
@@ -779,6 +777,11 @@ def issue_certificates_handler(event, context):
 
         lambda_client = boto3.client('lambda')
 
+        LOG.debug("Execution payload for domain '{0}'.".format(
+            domain['name']
+        ))
+        LOG.debug(lambda_payload)
+
         try:
             r = lambda_client.invoke(
                 FunctionName=context.function_name,
@@ -1024,6 +1027,8 @@ def lambda_handler(event, context):
     This is the Lambda function handler from which all executions are routed.
     The appropriate routing is determine by event['action']
     """
+    LOG.error("Starting execution of Let's Lamda")
+    LOG.error(json.dumps(event))
     routing = {
         'purge': purge_expired_certificates_handler, # removes expired certs. this is declared in the cloudformation template
         'issue_certificates': issue_certificates_handler, # issue multiple certificates. this is the routing path
