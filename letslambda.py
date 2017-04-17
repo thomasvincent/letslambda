@@ -359,6 +359,8 @@ def update_cf_server_certificate(conf, domain, cf_id, server_certificate_id):
         res = cf.get_distribution(Id=cf_id)
         cf_conf = res['Distribution']['DistributionConfig']
     except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchDistribution':
+            return False
         print e
 
     if res['Distribution']['Status'] != 'Deployed':
