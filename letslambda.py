@@ -7,6 +7,7 @@ import hashlib
 import json
 import logging
 import os
+import ovh
 import pytz
 import re
 import requests
@@ -24,6 +25,7 @@ from Crypto import Random
 from Crypto.PublicKey import RSA
 from datetime import datetime
 from OpenSSL import crypto
+from ovh import exceptions as ovhExceptions
 from time import sleep
 
 LOG = logging.getLogger("letslambda")
@@ -418,16 +420,16 @@ def answer_dns_challenge(conf, client, domain, challenge):
     dns_response = base64.urlsafe_b64encode(hashlib.sha256(authorization.encode()).digest()).decode("ascii").replace("=", "")
 
     # Let's update the DNS on our R53 account
-    zone_id = get_route53_zone_id(conf, domain['r53_zone'])
+    zone_id = get_route53_zone_id(conf, domain['dns_zone'])
     if zone_id == None:
-        LOG.error("Cannot determine zone id for zone '{0}'".format(domain['r53_zone']))
+        LOG.error("Cannot determine zone id for zone '{0}'".format(domain['dns_zone']))
         return None
 
-    LOG.info("Domain '{0}' has '{1}' for Id".format(domain['r53_zone'], zone_id))
+    LOG.info("Domain '{0}' has '{1}' for Id".format(domain['dns_zone'], zone_id))
 
-    zone_id = get_route53_zone_id(conf, domain['r53_zone'])
+    zone_id = get_route53_zone_id(conf, domain['dns_zone'])
     if zone_id == None:
-        LOG.error("Cannot find R53 zone {}, are you controling it ?".format(domain['r53_zone']))
+        LOG.error("Cannot find R53 zone {}, are you controling it ?".format(domain['dns_zone']))
         return None
 
     acme_domain = "_acme-challenge.{}".format(domain['name'])
@@ -873,8 +875,8 @@ def issue_certificate_handler(event, context):
 
     domain = event['domain']
 
-    if 'r53_zone' not in domain.keys():
-        LOG.critical("Missing parameter 'r53_zone' for domain '{0}'. Skipping domain.".format(domain['name']))
+    if 'dns_zone' not in domain.keys():
+        LOG.critical("Missing parameter 'dns_zone' for domain '{0}'. Skipping domain.".format(domain['name']))
         exit(1)
 
     if 'kmsKeyArn' not in domain.keys():
