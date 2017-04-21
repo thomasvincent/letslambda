@@ -14,7 +14,8 @@ info:
   - mailto:myemail@example.com
 domains:
   - name: www.example.com
-    r53_zone: example.com
+    dns_zone: example.com
+    dns_provider: route53
     countryName: FR
     reuse_key: true
     key_size: 2048
@@ -27,7 +28,8 @@ domains:
       - id: XXXXXXXXXXXXXX
       - id: YYYYYYYYYYYYYY
   - name: api.anotherexample.com
-    r53_zone: anotherexample.com
+    dns_zone: anotherexample.com
+    dns_provider: ovh
     countryName: AU
     reuse_key: true
     base_path: letsencrypt/certificates/
@@ -39,7 +41,8 @@ domains:
         region: ap-southeast-1
         port: 443
   - name: old.example.com
-    r53_zone: example.com
+    dns_zone: example.com
+    dns_provider: route53
     countryName: FR
     reuse_key: false
     key_size: 4096
@@ -73,7 +76,8 @@ Here is the details for each domain.
 `domains`: a list of domain information.
 
  - `- name`: The host name for which you want your certificate to be issued for.
- - `r53_zone`: the Route53 hosted zone name which contains the DNS entry for `name`.
+ - `dns_zone`: the DNS hosted zone name which contains the DNS entry for `name`.
+ - `dns_provider`: iThe service provider hosting your DNS zone. It can either be `ovh` or `route53`.
  - `countryName`: This parameter is used for the `countryName` in the [Certificate Signing Request](https://en.wikipedia.org/wiki/Certificate_signing_request) (CSR). It's a 2 letters representation of the country name. It follows the [ISO 3166-1 alpha-2](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) standard.
  - `kmsKeyArn`: Your KMS key arn to encrypt the Let's Encrypt account key and your certificate private keys. You may also use `AES256` for AWS managed at rest encryption. Default is `AES256`.
  - `reuse_key`: The Lambda function will try to reuse the same private key to generate the new CSR. This is useful if you ever want to use Public Key Pinning (Mobile App development) and yet want to renew your certificates every X months
@@ -158,6 +162,9 @@ As part of the deployment process, the CloudFormation template will create 4 IAM
 Having access to private keys is sensitive by definition. You should ensure that your private keys do not leak outside in any way.
 
 To retrieve more easily your private keys from an EC2 instance, you should create/update an EC2 role and add both `LetsLambdaKmsKeyManagedPolicy` and `LetsLambdaS3ReadManagedPolicy`. This will allow your the EC2 instances running under the corresponding role/managed policies to access the private keys without any hard coded credentials.
+
+# External DNS providers #
+Let's Lambda support multiple DNS providers through python modules. You should be looking at `route53_dns.py` and create an entry point named `???_create_dns_challenge` where `???` is the name of your DNS provider has presented in the YAML configuration.
 
 ## Credits ##
  - [Sébastien Requiem](https://github.com/kiddouk/)
