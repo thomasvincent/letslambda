@@ -11,6 +11,7 @@ case "$ID" in
 	;;
 esac
 
+FILES="letslambda.py route53_dns.py ovh_dns.py"
 TARGET="build"
 DIST="dist"
 DEST="$DIST/letslambda.zip"
@@ -25,7 +26,10 @@ cp -pdr \
 	$(find .env/lib64/python2.7/site-packages/ -maxdepth 1 -not -path .env/lib64/python2.7/site-packages/) \
 	$(find .env/lib/python2.7/site-packages/ -maxdepth 1 -not -path .env/lib/python2.7/site-packages/) \
 	"$TARGET/"
-cp -pd letslambda.py "$TARGET/"
+
+for F in $FILES; do
+	cp -pd $F "$TARGET/"
+done
 
 rm -f "$DEST"
 cd "$TARGET" && zip --recurse-paths -9 "../$DEST" ./
