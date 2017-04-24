@@ -19,6 +19,7 @@ domains:
   - name: api.anotherexample.com
     dns_zone: anotherexample.com
     dns_provider: ovh
+    dns_auth: '[{"endpoint": "ovh-eu","application_key": "xxxxxxxxxxxxx","application_secret": "xxxxxxxxxxxxxxxxxxxxxxxx","consumer_key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}]'
     countryName: AU
     reuse_key: true
     base_path: base_path/certificates/

@@ -30,6 +30,7 @@ domains:
   - name: api.anotherexample.com
     dns_zone: anotherexample.com
     dns_provider: ovh
+    dns_auth: '[{"endpoint": "ovh-eu","application_key": "xxxxxxxxxxxxx","application_secret": "xxxxxxxxxxxxxxxxxxxxxxxx","consumer_key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}]'
     countryName: AU
     reuse_key: true
     base_path: letsencrypt/certificates/
@@ -77,7 +78,9 @@ Here is the details for each domain.
 
  - `- name`: The host name for which you want your certificate to be issued for.
  - `dns_zone`: the DNS hosted zone name which contains the DNS entry for `name`.
- - `dns_provider`: iThe service provider hosting your DNS zone. It can either be `ovh` or `route53`.
+ - `dns_provider`: The service provider hosting your DNS zone. It can either be `ovh` or `route53`.
+ - `dns_auth` : The service provider credentials for your account. The JSON encoded value is passed directly to the provider. Currently only `ovh` is supported.
+    - _OVH_ : See https://github.com/ovh/python-ovh
  - `countryName`: This parameter is used for the `countryName` in the [Certificate Signing Request](https://en.wikipedia.org/wiki/Certificate_signing_request) (CSR). It's a 2 letters representation of the country name. It follows the [ISO 3166-1 alpha-2](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) standard.
  - `kmsKeyArn`: Your KMS key arn to encrypt the Let's Encrypt account key and your certificate private keys. You may also use `AES256` for AWS managed at rest encryption. Default is `AES256`.
  - `reuse_key`: The Lambda function will try to reuse the same private key to generate the new CSR. This is useful if you ever want to use Public Key Pinning (Mobile App development) and yet want to renew your certificates every X months
