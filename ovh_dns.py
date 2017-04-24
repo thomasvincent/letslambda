@@ -86,9 +86,10 @@ def _get_authoritative_nameserver(logger, domain):
             if rcode == dns.rcode.NXDOMAIN:
                 logger.error('[ovh] {0} does not exist.'.format(sub))
             else:
-                logger.error('[ovh] Error %s' % dns.rcode.to_text(rcode))
+                logger.warning("[ovh] Error while finding authoritative DNS server for '{0}'".format(domain))
+                logger.warning("[ovh] Error: '{0}'".format(dns.rcode.to_text(rcode)))
 
-            return None
+            return default.nameservers[0]
 
         rrset = None
         if len(response.authority) > 0:
@@ -113,11 +114,13 @@ def _wait_dns_refresh(logger, domain, subDomain, value, timeout = 60):
     wait_time = 2
     total_wait_time = 0
     ret = None
+    nx_retry = 2
+    nx_wait_time = 2
 
     # FIXME when domain doesn't exists
     nameserver = _get_authoritative_nameserver(logger, domain)
     if nameserver == None:
-        logger.error("[ovh] Name server for '{0}' not found" % domain)
+        logger.error("[ovh] Name server for '{0}' not found".format(domain))
 
     dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
     dns.resolver.default_resolver.nameservers = [ nameserver ]
@@ -126,8 +129,16 @@ def _wait_dns_refresh(logger, domain, subDomain, value, timeout = 60):
         try:
             r = dns.resolver.query('{0}.{1}'.format(subDomain, domain), 'TXT')
         except dns.resolver.NXDOMAIN:
-            logger.error("[ovh] Receive exception NXDOMAIN for domain '{0}'".format(domain))
-            return None
+            # OVH seems to randomly return a NXDOMAIN when a zone is being refreshed
+            # the code below attempts to deal with this by waiting a bit and retrying
+            logger.error("[ovh] Received exception NXDOMAIN for domain '{0}'i. {1} attemp(s) left.".format(domain, nx_retry))
+            if nx_retry > 0:
+                nx_retry = nx_retry-1
+                time.sleep(nx_wait_time)
+                total_wait_time = total_wait_time + nx_wait_time
+                continue
+            else:
+                return None
         except dns.resolver.NameError:
             logger.error("[ovh] Receive exception NameError for domain '{0}'".format(domain))
             return None
