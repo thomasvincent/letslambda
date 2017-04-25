@@ -595,6 +595,11 @@ def issue_certificates_handler(event, context):
     else:
         conf['base_path'] = clean_dir_path(conf['base_path'])
 
+    # falsely attempt to load the LE account key so it is created when
+    # child functions are invoked they account key won't have to be generated
+    # by multiple child functions at the same time
+    account_key = load_letsencrypt_account_key(conf)
+
     for domain in conf['domains']:
         payload = event
         payload['action'] = 'issue_certificate'
