@@ -45,8 +45,8 @@ def load_from_s3(conf, s3_key):
         s3 = conf['s3_client']
         content = s3.get_object(Bucket=conf['s3_bucket'], Key=s3_key)["Body"].read()
     except ClientError as e:
-        logger.error("Failed to load '{0}' in bucket '{1}'".format(s3_key, conf['s3_bucket']))
-        logger.error("Error: {0}".format(e))
+        logger.error("[main] Failed to load '{0}' in bucket '{1}'".format(s3_key, conf['s3_bucket']))
+        logger.error("[main] Error: {0}".format(e))
         return None
 
     return content
@@ -60,8 +60,8 @@ def load_config(s3, s3_bucket, letslambda_config):
     try:
         conf = s3.get_object(Bucket=s3_bucket, Key=letslambda_config)["Body"].read()
     except ClientError as e:
-        logger.error("Failed to fetch letslambda configuration '{0}' in bucket '{1}'".format(letslambda_config, s3_bucket))
-        logger.error("Error: {0}".format(e))
+        logger.error("[main] Failed to fetch letslambda configuration '{0}' in bucket '{1}'".format(letslambda_config, s3_bucket))
+        logger.error("[main] Error: {0}".format(e))
         return None
 
     return yaml.load(conf)
@@ -79,7 +79,7 @@ def load_letsencrypt_account_key(conf):
     consistency's sake crypto material were all named with .pem
     the function takes care of both, but defaults to the new behavior.
     """
-    logger.debug("Loading account key from s3")
+    logger.debug("[main] Loading account key from s3")
 
     newAccountNeeded = False
 
@@ -93,7 +93,7 @@ def load_letsencrypt_account_key(conf):
             newAccountNeeded = True
         conf['extension'] = 'pem'
     else:
-        logger.info("Using original private key naming convention (.key.rsa). You may rename to .key.pem for consistance purpose.")
+        logger.info("[main] Using original private key naming convention (.key.rsa). You may rename to .key.pem for consistance purpose.")
         conf['extension'] = 'rsa'
 
 
@@ -109,11 +109,11 @@ def register_new_account(conf, key):
     with the key. No problem if it fails because this
     kye is already used.
     """
-    logger.info("Registering with ACME server with the new account key")
+    logger.info("[main] Registering with ACME server with the new account key")
     newReg = messages.NewRegistration(contact=tuple(conf['info']), key=key.public_key())
     acme_client = client.Client(conf['directory'], key)
     registration_resource = acme_client.register(newReg)
-    logger.info("Agreeing on the TOS on your behalf")
+    logger.info("[main] Agreeing on the TOS on your behalf")
     acme_client.agree_to_tos(registration_resource)
 
 def get_authorization(client, domain):
@@ -134,10 +134,10 @@ def save_certificates_to_s3(conf, domain, chain_certificate, certificate):
     Save/overwite newly requested certificate and corresponding chain certificate
     """
     if chain_certificate is not False:
-        logger.info("Saving certificate to S3")
+        logger.info("[main] Saving certificate to S3")
         save_to_s3(conf, domain['base_path']+domain['name']+".chain.pem", chain_certificate)
 
-    logger.info("Saving chain certificate to S3")
+    logger.info("[main] Saving chain certificate to S3")
     save_to_s3(conf, domain['base_path']+domain['name']+".cert.pem", certificate)
 
 
@@ -146,7 +146,7 @@ def upload_to_iam(conf, domain, chain_certificate, certificate, key):
     Create a new IAM certificate from ACME and private key.
     It also fetched the chain certificate from ACME if provided
     """
-    logger.info("Loading certificate elements for domain '{0}' into IAM".format(domain['name']))
+    logger.info("[main] Loading certificate elements for domain '{0}' into IAM".format(domain['name']))
 
     iam = boto3.client('iam', config=Config(signature_version='v4', region_name=conf['region']))
 
@@ -162,8 +162,8 @@ def upload_to_iam(conf, domain, chain_certificate, certificate, key):
 
         res = iam.upload_server_certificate(**kwargs)
     except ClientError as e:
-        logger.error("Failed to upload certificate for domain '{0}'".format(domain['name']))
-        logger.error("Exception: {0}".format(e))
+        logger.error("[main] Failed to upload certificate for domain '{0}'".format(domain['name']))
+        logger.error("[main] Exception: {0}".format(e))
         return False
 
     return res
@@ -191,15 +191,15 @@ def update_elb_server_certificate(conf, elb_region, elb_name, elb_port, server_c
                 timeout = timeout - 1
                 continue
 
-            logger.error("Failed to set server certificate '{0}' on ELB '{0}:{1}' in region '{2}'".format(server_certificate_arn, elb_name, elb_port, elb_region))
-            logger.error("Exception: {0}".format(e))
+            logger.error("[main] Failed to set server certificate '{0}' on ELB '{0}:{1}' in region '{2}'".format(server_certificate_arn, elb_name, elb_port, elb_region))
+            logger.error("[main] Exception: {0}".format(e))
             return False
 
     if timeout < 0:
-        logger.error("Could not set server certificate '{0}' within 60 seconds on ELB '{1}:{2}' in region '{3}'.".format(server_certificate_arn, elb_name, elb_port, elb_region))
+        logger.error("[main] Could not set server certificate '{0}' within 60 seconds on ELB '{1}:{2}' in region '{3}'.".format(server_certificate_arn, elb_name, elb_port, elb_region))
         return False
 
-    logger.debug("Set server certificate '{0}' on ELB '{1}:{2}' in region '{3}' in {4} seconds.".format(
+    logger.debug("[main] Set server certificate '{0}' on ELB '{1}:{2}' in region '{3}' in {4} seconds.".format(
         server_certificate_arn,
         elb_name,
         elb_port,
@@ -223,7 +223,7 @@ def update_cf_server_certificate(conf, domain, cf_id, server_certificate_id):
         print e
 
     if res['Distribution']['Status'] != 'Deployed':
-        logger.error("Could not set server certificate '{0}' on CloudFront distribution {1} as the current status is '{2}'.".format(server_certificate_id, cf_id, res['Distribution']['Status']))
+        logger.error("[main] Could not set server certificate '{0}' on CloudFront distribution {1} as the current status is '{2}'.".format(server_certificate_id, cf_id, res['Distribution']['Status']))
         return False
 
     cf_conf['ViewerCertificate'] = {
@@ -252,15 +252,15 @@ def update_cf_server_certificate(conf, domain, cf_id, server_certificate_id):
                 timeout = timeout - 1
                 continue
 
-            logger.error("Failed to set server certificate '{0}' on CloudFront distribution {1}".format(server_certificate_id, cf_id))
-            logger.error("Exception: {0}".format(e))
+            logger.error("[main] Failed to set server certificate '{0}' on CloudFront distribution {1}".format(server_certificate_id, cf_id))
+            logger.error("[main] Exception: {0}".format(e))
             return False
 
     if timeout < 0:
-        logger.error("Could not set server certificate '{0}' within 60 seconds on CloudFront distribution {1}".format(server_certificate_id, cf_id))
+        logger.error("[main] Could not set server certificate '{0}' within 60 seconds on CloudFront distribution {1}".format(server_certificate_id, cf_id))
         return False
 
-    logger.debug("Set server certificate '{0}' on CloudFront distribution {1} in {2} seconds.".format(server_certificate_id, cf_id, 60-timeout))
+    logger.debug("[main] Set server certificate '{0}' on CloudFront distribution {1} in {2} seconds.".format(server_certificate_id, cf_id, 60-timeout))
     return True
 
 
@@ -296,7 +296,7 @@ def create_and_save_key(conf, s3_key, kms_key='AES256', key_size=2048):
     """
     Generate a RSA 4096 key for general purpose (account or CSR)
     """
-    logger.info("Generating new RSA key")
+    logger.info("[main] Generating new RSA key")
     key = RSA.generate(key_size).exportKey("PEM")
     save_to_s3(conf, s3_key, key, True, kms_key)
     return key
@@ -305,7 +305,7 @@ def save_to_s3(conf, s3_key, content, encrypt=False, kms_key='AES256'):
     """
     Save the rsa key in PEM format to s3 .. for later use
     """
-    logger.debug("Saving object '{0}' to in 's3://{1}'".format(s3_key, conf['s3_bucket']))
+    logger.debug("[main] Saving object '{0}' to in 's3://{1}'".format(s3_key, conf['s3_bucket']))
     s3 = conf['s3_client']
     kwargs = {
         'Bucket': conf['s3_bucket'],
@@ -323,8 +323,8 @@ def save_to_s3(conf, s3_key, content, encrypt=False, kms_key='AES256'):
     try:
         s3.put_object(**kwargs);
     except ClientError as e:
-        logger.error("Failed to save '{0}' in bucket '{1}'".format(s3_key, conf['s3_bucket']))
-        logger.error("Error: {0}".format(e))
+        logger.error("[main] Failed to save '{0}' in bucket '{1}'".format(s3_key, conf['s3_bucket']))
+        logger.error("[main] Error: {0}".format(e))
         return None
 
 def load_private_key(conf, domain):
@@ -332,7 +332,7 @@ def load_private_key(conf, domain):
     s3_key = domain['base_path'] + domain['name'] + ".key." + conf['extension']
 
     if 'reuse_key' in domain.keys() and domain['reuse_key'] == True:
-        logger.debug("Attempting to load private key from S3 '{0}' for domain '{1}'".format(s3_key, domain['name']))
+        logger.debug("[main] Attempting to load private key from S3 '{0}' for domain '{1}'".format(s3_key, domain['name']))
         key = load_from_s3(conf, s3_key)
 
     if key == None:
@@ -343,7 +343,7 @@ def load_private_key(conf, domain):
 def generate_certificate_signing_request(conf, domain):
     key = load_private_key(conf, domain)
 
-    logger.info("Creating Certificate Signing Request.")
+    logger.info("[main] Creating Certificate Signing Request.")
     csr = crypto.X509Req()
     csr.get_subject().countryName = domain['countryName']
     csr.get_subject().CN = domain['name']
@@ -357,12 +357,12 @@ def request_certificate(conf, domain, client, auth_resource):
     try:
         (certificate, ar) = client.poll_and_request_issuance(ComparableX509(csr), [auth_resource])
     except errors.PollError as e:
-        logger.error("Failed to get certificate issuance for '{0}'.".format(domain['name']))
-        logger.error("Error: {0}".format(e))
+        logger.error("[main] Failed to get certificate issuance for '{0}'.".format(domain['name']))
+        logger.error("[main] Error: {0}".format(e))
         return (False, False, False)
     except messages.Error as e:
-        logger.error("Failed to get certificate issuance for '{0}'.".format(domain['name']))
-        logger.error("Error: {0}".format(e))
+        logger.error("[main] Failed to get certificate issuance for '{0}'.".format(domain['name']))
+        logger.error("[main] Error: {0}".format(e))
         return (False, False, False)
 
     chain = requests.get(certificate.cert_chain_uri)
@@ -372,7 +372,7 @@ def request_certificate(conf, domain, client, auth_resource):
         chain_certificate = crypto.load_certificate(crypto.FILETYPE_ASN1, chain.content)
         pem_chain_certificate = crypto.dump_certificate(crypto.FILETYPE_PEM, chain_certificate).decode("ascii")
     else:
-        logger.error("Failed to retrieve chain certificate. Status was '{0}'.".format(chain.status_code))
+        logger.error("[main] Failed to retrieve chain certificate. Status was '{0}'.".format(chain.status_code))
         pem_chain_certificate = False
 
     pem_certificate = crypto.dump_certificate(crypto.FILETYPE_PEM, certificate.body.wrapped).decode("ascii")
@@ -425,8 +425,8 @@ def list_expired_server_certificates(conf):
             result = iam.list_server_certificates(Marker=result['Marker'], MaxItems=1)
 
     except ClientError as e:
-        logger.error("Failed to load the list of IAM server certificates.")
-        logger.error("Error: {0}".format(e))
+        logger.error("[main] Failed to load the list of IAM server certificates.")
+        logger.error("[main] Error: {0}".format(e))
         return False
 
     return server_certificates
@@ -440,12 +440,12 @@ def delete_server_certificate(conf, server_certificate):
     iam = boto3.client('iam', config=Config(signature_version='v4', region_name=conf['region']))
 
     try:
-        logger.info("Attempting to delete '{0}'".format(server_certificate['ServerCertificateName']))
+        logger.info("[main] Attempting to delete '{0}'".format(server_certificate['ServerCertificateName']))
         iam.delete_server_certificate(ServerCertificateName=server_certificate['ServerCertificateName'])
 
     except ClientError as e:
-        logger.error("Failed to delete IAM server certificate '{0}'".format(server_certificate['ServerCertificateName']))
-        logger.error("Error: {0}".format(e))
+        logger.error("[main] Failed to delete IAM server certificate '{0}'".format(server_certificate['ServerCertificateName']))
+        logger.error("[main] Error: {0}".format(e))
         return False
 
     return True
@@ -467,19 +467,19 @@ def update_dynamodb_table_throughput(conf, read_throughput, write_throughput):
             break
         except ClientError as e:
             if e.response['Error']['Code'] == ValidationException:
-                logger.warning("The DynamoDB table '{0}' throughput hasn't changed because it's already at the desired capacity. Read: '{1}, Write: '{2}'.".format(ddb_name, read_throughput, write_throughput))
+                logger.warning("[main] The DynamoDB table '{0}' throughput hasn't changed because it's already at the desired capacity. Read: '{1}, Write: '{2}'.".format(ddb_name, read_throughput, write_throughput))
                 break
             elif e.response['Error']['Code'] == 'ResourceInUseException':
-                logger.error("The DynamoDB table '{0}' throughput hasn't changed because it's already pending changes.".format(ddb_name))
+                logger.error("[main] The DynamoDB table '{0}' throughput hasn't changed because it's already pending changes.".format(ddb_name))
                 sleep(1)
                 continue
             else:
-                logger.error("Failed to change DynamoDB table '{0}' throughput".format(ddb_name))
-                logger.error("Exception: {0}".format(e))
+                logger.error("[main] Failed to change DynamoDB table '{0}' throughput".format(ddb_name))
+                logger.error("[main] Exception: {0}".format(e))
                 return False
 
     if timeout < 0:
-        logger.error("Failed to change DynamoDB table '{0}' throughput within 15 seconds as the table is pending changes.".format(ddb_name))
+        logger.error("[main] Failed to change DynamoDB table '{0}' throughput within 15 seconds as the table is pending changes.".format(ddb_name))
         return False
     else:
         return True
@@ -523,19 +523,19 @@ def update_dynamodb_item(conf, domain):
                 sleep(1)
                 continue
 
-            logger.error("An error has occured while updating DynamoDB table '{0}'".format(ddb_name))
-            logger.error("Exception: {0}".format(e))
+            logger.error("[main] An error has occured while updating DynamoDB table '{0}'".format(ddb_name))
+            logger.error("[main] Exception: {0}".format(e))
             return False
 
     if timeout < 0:
-        logger.error("Failed to update DynamoDB table within 15 seconds")
+        logger.error("[main] Failed to update DynamoDB table within 15 seconds")
         return False
 
     if 'ResponseMetadata' not in res.keys() or 'HTTPStatusCode' not in res['ResponseMetadata'].keys():
-        logger.critical("Cannot determine DynamoDB operation result.")
+        logger.critical("[main] Cannot determine DynamoDB operation result.")
         return None
     else:
-        logger.debug("RequestID: '{0}'".format(res['ResponseMetadata']['RequestId']))
+        logger.debug("[main] RequestID: '{0}'".format(res['ResponseMetadata']['RequestId']))
         return True
 
 
@@ -546,46 +546,46 @@ def issue_certificates_handler(event, context):
     """
 
     if 'bucket' not in event:
-        logger.critical("No bucket name has been provided. Exiting.")
+        logger.critical("[main] No bucket name has been provided. Exiting.")
         exit(1)
     s3_bucket = event['bucket']
 
     if 'region' not in event.keys() and 'AWS_DEFAULT_REGION' not in os.environ.keys():
-        logger.critical("Unable to determine AWS region code. Exiting.")
+        logger.critical("[main] Unable to determine AWS region code. Exiting.")
         exit(1)
     else:
         if 'region' not in event.keys():
-            logger.warning("Using local environment to determine AWS region code.")
+            logger.warning("[main] Using local environment to determine AWS region code.")
             s3_region = os.environ['AWS_DEFAULT_REGION']
-            logger.warning("Local region set to '{0}'.".format(s3_region))
+            logger.warning("[main] Local region set to '{0}'.".format(s3_region))
         else:
             s3_region = event['region']
 
     if 'defaultkey' not in event:
-        logger.warning("No default KMS key provided, defaulting to 'AES256'.")
+        logger.warning("[main] No default KMS key provided, defaulting to 'AES256'.")
         kms_key = 'AES256'
     else:
-        logger.info("Using {0} as default KMS key.".format(event['defaultkey']))
+        logger.info("[main] Using {0} as default KMS key.".format(event['defaultkey']))
         kms_key = event['defaultkey']
 
     if 'configfile' not in event:
-        logger.warning("Using 'letslambda.yml' as the default configuration file.")
+        logger.warning("[main] Using 'letslambda.yml' as the default configuration file.")
         letslambda_config = 'letslambda.yml'
     else:
         letslambda_config = event['configfile']
 
     letslambda_config = clean_file_path(letslambda_config)
 
-    logger.info("Retrieving configuration file '{0}' from bucket '{1}' in region '{2}' ".format(letslambda_config, s3_bucket, s3_region))
+    logger.info("[main] Retrieving configuration file '{0}' from bucket '{1}' in region '{2}' ".format(letslambda_config, s3_bucket, s3_region))
     s3_client = boto3.client('s3', config=Config(signature_version='s3v4', region_name=s3_region))
 
     conf = load_config(s3_client, s3_bucket, letslambda_config)
     if conf == None:
-        logger.critical("Cannot load letslambda configuration. Exiting.")
+        logger.critical("[main] Cannot load letslambda configuration. Exiting.")
         exit(1)
 
     if 'notification_table' not in event:
-        logger.error("No DynamoDB table has been provided, so no notification will be issued.")
+        logger.error("[main] No DynamoDB table has been provided, so no notification will be issued.")
     else:
         conf['notification_table'] = event['notification_table']
 
@@ -617,7 +617,7 @@ def issue_certificates_handler(event, context):
 
         lambda_client = boto3.client('lambda')
 
-        logger.debug("Execution payload for domain '{0}'.".format(
+        logger.debug("[main] Execution payload for domain '{0}'.".format(
             domain['name']
         ))
         logger.debug(lambda_payload)
@@ -629,14 +629,14 @@ def issue_certificates_handler(event, context):
                 LogType='Tail',
                 Payload=lambda_payload)
 
-            logger.debug("Execution in progress for domain '{0}'. RequestId: '{1}', StatusCode: '{2}'".format(
+            logger.debug("[main] Execution in progress for domain '{0}'. RequestId: '{1}', StatusCode: '{2}'".format(
                 domain['name'],
                 r['ResponseMetadata']['RequestId'],
                 r['StatusCode']
             ))
         except ClientError as e:
-            logger.error("Failed to execute lambda function '{0}'. Skipping domain '{1}'.".format(context.function_name, domain['name']))
-            logger.error("Error: {0}".format(e))
+            logger.error("[main] Failed to execute lambda function '{0}'. Skipping domain '{1}'.".format(context.function_name, domain['name']))
+            logger.error("[main] Error: {0}".format(e))
             continue
 
 
@@ -648,26 +648,26 @@ def issue_certificate_handler(event, context):
     """
 
     if 'bucket' not in event:
-        logger.critical("No bucket name has been provided. Exiting.")
+        logger.critical("[main] No bucket name has been provided. Exiting.")
         exit(1)
     s3_bucket = event['bucket']
 
     if 'region' not in event.keys() and 'AWS_DEFAULT_REGION' not in os.environ.keys():
-        logger.critical("Unable to determine AWS region code. Exiting.")
+        logger.critical("[main] Unable to determine AWS region code. Exiting.")
         exit(1)
     else:
         if 'region' not in event.keys():
-            logger.warning("Using local environment to determine AWS region code.")
+            logger.warning("[main] Using local environment to determine AWS region code.")
             s3_region = os.environ['AWS_DEFAULT_REGION']
-            logger.warning("Local region set to '{0}'.".format(s3_region))
+            logger.warning("[main] Local region set to '{0}'.".format(s3_region))
         else:
             s3_region = event['region']
 
     if 'defaultkey' not in event:
-        logger.warning("No default KMS key provided, defaulting to 'AES256'.")
+        logger.warning("[main] No default KMS key provided, defaulting to 'AES256'.")
         kms_key = 'AES256'
     else:
-        logger.info("Using {0} as default KMS key.".format(event['defaultkey']))
+        logger.info("[main] Using {0} as default KMS key.".format(event['defaultkey']))
         kms_key = event['defaultkey']
 
 
@@ -676,25 +676,25 @@ def issue_certificate_handler(event, context):
     try:
         conf = event['conf']
     except KeyError as e:
-        logger.warning("No configuration statement was provided, trying to load a default one.")
+        logger.warning("[main] No configuration statement was provided, trying to load a default one.")
 
         if 'configfile' not in event:
-            logger.warning("Using 'letslambda.yml' as the default configuration file.")
+            logger.warning("[main] Using 'letslambda.yml' as the default configuration file.")
             letslambda_config = 'letslambda.yml'
         else:
             letslambda_config = event['configfile']
 
         letslambda_config = clean_file_path(letslambda_config)
 
-        logger.info("Retrieving configuration file '{0}' from bucket '{1}' in region '{2}' ".format(letslambda_config, s3_bucket, s3_region))
+        logger.info("[main] Retrieving configuration file '{0}' from bucket '{1}' in region '{2}' ".format(letslambda_config, s3_bucket, s3_region))
         conf = load_config(s3_client, s3_bucket, letslambda_config)
 
         if conf == None:
-            logger.critical("Cannot load letslambda configuration. Exiting.")
+            logger.critical("[main] Cannot load letslambda configuration. Exiting.")
             exit(1)
 
     if 'notification_table' not in event:
-        logger.error("No DynamoDB table has been provided, so no notification will be issued.")
+        logger.error("[main] No DynamoDB table has been provided, so no notification will be issued.")
     else:
         conf['notification_table'] = event['notification_table']
 
@@ -712,12 +712,12 @@ def issue_certificate_handler(event, context):
     domain = event['domain']
 
     if 'r53_zone' in domain.keys():
-        logger.warning("The parameter 'r53_zone' associated to '{0}' has been deprecated in favor of 'dns_zone' and 'dns_provider'. Consider upgrading your configuration.".format(domain['name']))
+        logger.warning("[main] The parameter 'r53_zone' associated to '{0}' has been deprecated in favor of 'dns_zone' and 'dns_provider'. Consider upgrading your configuration.".format(domain['name']))
         domain['dns_zone'] = domain['r53_zone'
         domain['dns_provider'] = 'route53'
 
     if 'dns_zone' not in domain.keys():
-        logger.critical("Missing parameter 'dns_zone' for domain '{0}'. Skipping domain.".format(domain['name']))
+        logger.critical("[main] Missing parameter 'dns_zone' for domain '{0}'. Skipping domain.".format(domain['name']))
         exit(1)
 
     if 'kmsKeyArn' not in domain.keys():
@@ -744,7 +744,7 @@ def issue_certificate_handler(event, context):
     challenge = get_dns_challenge(authorization_resource)
     res = answer_dns_challenge(conf, acme_client, domain, challenge)
     if res is not True:
-        logger.critical("An error occurred while answering the DNS challenge. Skipping domain '{0}'.".format(domain['name']))
+        logger.critical("[main] An error occurred while answering the DNS challenge. Skipping domain '{0}'.".format(domain['name']))
         exit(1)
 
     time_spent = 0.0
@@ -753,29 +753,29 @@ def issue_certificate_handler(event, context):
         time_spent = time_spent + 0.1
 
         if time_spent % 5 == 0:
-            logger.debug("Waiting for the domain private key of '{0}' to be generated and saved in S3. Total time: {1:.2f}s".format(domain['name'], time_spent))
+            logger.debug("[main] Waiting for the domain private key of '{0}' to be generated and saved in S3. Total time: {1:.2f}s".format(domain['name'], time_spent))
 
     (chain, certificate, key) = request_certificate(conf, domain, acme_client, authorization_resource)
     if key == False or certificate == False:
-        logger.critical("An error occurred while requesting the signed certificate. Skipping domain '{0}'.".format(domain['name']))
+        logger.critical("[main] An error occurred while requesting the signed certificate. Skipping domain '{0}'.".format(domain['name']))
         exit(1)
 
     save_certificates_to_s3(conf, domain, chain, certificate)
     update_dynamodb_item(conf, domain)
     iam_cert = upload_to_iam(conf, domain, chain, certificate, key)
     if iam_cert is False or iam_cert['ResponseMetadata']['HTTPStatusCode'] is not 200:
-        logger.critical("An error occurred while saving your server certificate in IAM. Skipping domain '{0}'.".format(domain['name']))
+        logger.critical("[main] An error occurred while saving your server certificate in IAM. Skipping domain '{0}'.".format(domain['name']))
         exit(1)
 
     # single ELB mode (compatibility)
     if 'elb' in domain.keys():
         if 'elb_port' not in domain.keys():
             domain['elb_port'] = 443
-            logger.warning("The ELB '{0}' has no port set. Using '{1}' as a default.".format(domain['elb'], domain['elb_port']))
+            logger.warning("[main] The ELB '{0}' has no port set. Using '{1}' as a default.".format(domain['elb'], domain['elb_port']))
 
         if 'elb_region' not in domain.keys():
             domain['elb_region'] = conf['region']
-            logger.warning("The ELB '{0}' has no region set. Using '{1}' as a default.".format(domain['elb'], domain['elb_region']))
+            logger.warning("[main] The ELB '{0}' has no region set. Using '{1}' as a default.".format(domain['elb'], domain['elb_region']))
 
         res = update_elb_server_certificate(conf,
                 domain['elb_region'],
@@ -783,32 +783,32 @@ def issue_certificate_handler(event, context):
                 domain['elb_port'],
                 iam_cert['ServerCertificateMetadata']['Arn'])
         if res is not True:
-            logger.error("An error occurred while attaching your server certificate to your ELB.")
+            logger.error("[main] An error occurred while attaching your server certificate to your ELB.")
 
     # Muti ELB mode
     if 'elbs' in domain.keys():
         for elb in domain['elbs']:
             if 'name' not in  elb.keys():
-                logger.error("The name of an ELB is missing. You should check {0}. Skipping this ELB.".format(conf['letslambda_config']))
+                logger.error("[main] The name of an ELB is missing. You should check {0}. Skipping this ELB.".format(conf['letslambda_config']))
                 continue
 
             if 'port' not in elb.keys():
                 elb['port'] = 443
-                logger.warning("The ELB '{0}' has no port set. Using '{1}' as a default.".format(elb['name'], elb['port']))
+                logger.warning("[main] The ELB '{0}' has no port set. Using '{1}' as a default.".format(elb['name'], elb['port']))
 
             if 'region' not in elb.keys():
                 elb['region'] = conf['region']
-                logger.warning("The ELB '{0}' has no region set. Using '{1}' as a default.".format(elb['name'], elb['region']))
+                logger.warning("[main] The ELB '{0}' has no region set. Using '{1}' as a default.".format(elb['name'], elb['region']))
 
             res = update_elb_server_certificate(conf, elb['region'], elb['name'], elb['port'], iam_cert['ServerCertificateMetadata']['Arn'])
             if res is not True:
-              logger.error("An error occurred while attaching your server certificate to your ELB.")
+              logger.error("[main] An error occurred while attaching your server certificate to your ELB.")
 
     if 'cfs' in domain.keys():
         for cf in domain['cfs']:
             res = update_cf_server_certificate(conf, domain, cf['id'], iam_cert['ServerCertificateMetadata']['ServerCertificateId'])
             if res is not True:
-                logger.error("An error occurred while attaching your server certificate to your CloudFront distribution")
+                logger.error("[main] An error occurred while attaching your server certificate to your CloudFront distribution")
 
 
 def purge_expired_certificates_handler(event, context):
@@ -816,35 +816,35 @@ def purge_expired_certificates_handler(event, context):
     Iterate hrough the IAM certificates and attempt to remove the ones that have expired
     """
     if 'bucket' not in event:
-        logger.critical("No bucket name has been provided. Exiting.")
+        logger.critical("[main] No bucket name has been provided. Exiting.")
         exit(1)
     s3_bucket = event['bucket']
 
     if 'region' not in event.keys() and 'AWS_DEFAULT_REGION' not in os.environ.keys():
-        logger.critical("Unable to determine AWS region code. Exiting.")
+        logger.critical("[main] Unable to determine AWS region code. Exiting.")
         exit(1)
     else:
         if 'region' not in event.keys():
-            logger.warning("Using local environment to determine AWS region code.")
+            logger.warning("[main] Using local environment to determine AWS region code.")
             s3_region = os.environ['AWS_DEFAULT_REGION']
-            logger.warning("Local region set to '{0}'.".format(s3_region))
+            logger.warning("[main] Local region set to '{0}'.".format(s3_region))
         else:
             s3_region = event['region']
 
     if 'configfile' not in event:
-        logger.warning("Using 'letslambda.yml' as the default configuration file.")
+        logger.warning("[main] Using 'letslambda.yml' as the default configuration file.")
         letslambda_config = 'letslambda.yml'
     else:
         letslambda_config = event['configfile']
 
     letslambda_config = clean_file_path(letslambda_config)
 
-    logger.info("Retrieving configuration file '{0}' from bucket '{1}' in region '{2}' ".format(letslambda_config, s3_bucket, s3_region))
+    logger.info("[main] Retrieving configuration file '{0}' from bucket '{1}' in region '{2}' ".format(letslambda_config, s3_bucket, s3_region))
     s3_client = boto3.client('s3', config=Config(signature_version='s3v4', region_name=s3_region))
 
     conf = load_config(s3_client, s3_bucket, letslambda_config)
     if conf == None:
-        logger.critical("Cannot load letslambda configuration. Exiting.")
+        logger.critical("[main] Cannot load letslambda configuration. Exiting.")
         exit(1)
 
     conf['region'] = os.environ['AWS_DEFAULT_REGION']
@@ -854,16 +854,16 @@ def purge_expired_certificates_handler(event, context):
 
     server_certificates = list_expired_server_certificates(conf)
     if server_certificates == False:
-        logger.critical("Cannot load the list of IAM server certificates. Exiting.")
+        logger.critical("[main] Cannot load the list of IAM server certificates. Exiting.")
         exit(1)
 
     if 'delete_expired_certificates' in conf.keys() and conf['delete_expired_certificates'] == True:
         for server_certificate in server_certificates:
             delete_server_certificate(conf, server_certificate)
     else:
-        logger.info("The following IAM server certificates have expired and should be removed")
+        logger.info("[main] The following IAM server certificates have expired and should be removed")
         for server_certificate in server_certificates:
-            logger.warning("IAM Server certificate '{0}' has expired as of '{1}'".format(
+            logger.warning("[main] IAM Server certificate '{0}' has expired as of '{1}'".format(
                 server_certificate['ServerCertificateName'],
                 server_certificate['Expiration']))
 
@@ -872,7 +872,7 @@ def lambda_handler(event, context):
     This is the Lambda function handler from which all executions are routed.
     The appropriate routing is determine by event['action']
     """
-    logger.error("Starting execution of Let's Lamda")
+    logger.error("[main] Starting execution of Let's Lamda")
     logger.error(json.dumps(event))
     routing = {
         'purge': purge_expired_certificates_handler, # removes expired certs. this is declared in the cloudformation template
