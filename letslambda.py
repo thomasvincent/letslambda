@@ -360,6 +360,10 @@ def request_certificate(conf, domain, client, auth_resource):
         LOG.error("Failed to get certificate issuance for '{0}'.".format(domain['name']))
         LOG.error("Error: {0}".format(e))
         return (False, False, False)
+    except messages.Error as e:
+        LOG.error("Failed to get certificate issuance for '{0}'.".format(domain['name']))
+        LOG.error("Error: {0}".format(e))
+        return (False, False, False)
 
     chain = requests.get(certificate.cert_chain_uri)
     chain_certificate = None
@@ -598,7 +602,9 @@ def issue_certificates_handler(event, context):
     # falsely attempt to load the LE account key so it is created when
     # child functions are invoked they account key won't have to be generated
     # by multiple child functions at the same time
+    conf['s3_client'] = s3_client
     account_key = load_letsencrypt_account_key(conf)
+    conf.pop('s3_client', None)
 
     for domain in conf['domains']:
         payload = event
