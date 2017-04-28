@@ -131,7 +131,7 @@ def _wait_dns_refresh(logger, domain, subDomain, value, timeout = 60):
         except dns.resolver.NXDOMAIN:
             # OVH seems to randomly return a NXDOMAIN when a zone is being refreshed
             # the code below attempts to deal with this by waiting a bit and retrying
-            logger.error("[ovh] Received exception NXDOMAIN for domain '{0}'i. {1} attemp(s) left.".format(domain, nx_retry))
+            logger.error("[ovh] Received exception NXDOMAIN for domain '{0}'.{1} attemp(s) left.".format(domain, nx_retry))
             if nx_retry > 0:
                 nx_retry = nx_retry-1
                 time.sleep(nx_wait_time)
