@@ -711,6 +711,11 @@ def issue_certificate_handler(event, context):
 
     domain = event['domain']
 
+    if 'r53_zone' in domain.keys():
+        LOG.warning("The parameter 'r53_zone' associated to '{0}' has been deprecated in favor of 'dns_zone' and 'dns_provider'. Consider upgrading your configuration.".format(domain['name']))
+        domain['dns_zone'] = domain['r53_zone'
+        domain['dns_provider'] = 'route53'
+
     if 'dns_zone' not in domain.keys():
         LOG.critical("Missing parameter 'dns_zone' for domain '{0}'. Skipping domain.".format(domain['name']))
         exit(1)
