@@ -8,9 +8,12 @@ import json
 import logging
 import os
 import ovh
+import paramiko
 import pytz
 import re
 import requests
+import socket
+import StringIO
 import threading
 import time
 import yaml
@@ -27,6 +30,7 @@ from datetime import datetime
 from OpenSSL import crypto
 from ovh import exceptions as ovhExceptions
 from time import sleep
+from urlparse import urlparse
 
 logger = logging.getLogger("letslambda")
 handler = logging.StreamHandler()
@@ -694,7 +698,7 @@ def issue_certificate_handler(event, context):
             exit(1)
 
     if 'notification_table' not in event:
-        logger.error("[main] No DynamoDB table has been provided, so no notification will be issued.")
+        logger.warning("[main] No DynamoDB table has been provided, so no notification will be issued.")
     else:
         conf['notification_table'] = event['notification_table']
 
@@ -767,6 +771,53 @@ def issue_certificate_handler(event, context):
         logger.critical("[main] An error occurred while saving your server certificate in IAM. Skipping domain '{0}'.".format(domain['name']))
         exit(1)
 
+    # Multi SSH servers mode
+    if 'ssh-hosts' in domain.keys():
+        for sshhost in domain['ssh-hosts']:
+            if 'host' not in sshhost.keys():
+                logger.error("[main] No SSH url specified. Skipping this SSH host.")
+                continue
+
+            payload = event
+            payload['action'] = 'deploy_certificate_ssh'
+
+            payload['domain'] = domain
+            payload['domain']['ssh-host'] = sshhost
+            payload['domain'].pop('ssh-hosts', None) # remove unecessary data
+
+            payload['conf'] = conf
+            payload['conf'].pop('s3_client', None) # remove python object
+            payload['conf'].pop('domains', None) # remove unecessary data
+
+            lambda_payload = json.dumps(payload, ensure_ascii=False)
+
+            lambda_client = boto3.client('lambda')
+
+            logger.debug("[main] Execution payload for domain '{0}'.".format(
+                domain['name']
+            ))
+            logger.debug(lambda_payload)
+
+            continue
+
+            try:
+                r = lambda_client.invoke(
+                    FunctionName=context.function_name,
+                    InvocationType='Event',
+                    LogType='Tail',
+                    Payload=lambda_payload)
+
+                logger.debug("[main] Execution in progress for domain '{0}'. RequestId: '{1}', StatusCode: '{2}'".format(
+                    domain['name'],
+                    r['ResponseMetadata']['RequestId'],
+                    r['StatusCode']
+                ))
+            except ClientError as e:
+                logger.error("[main] Failed to execute lambda function '{0}'. Skipping SSH deployment for domain '{1}'.".format(context.function_name, domain['name']))
+                logger.error("[main] Error: {0}".format(e))
+                continue
+
+
     # single ELB mode (compatibility)
     if 'elb' in domain.keys():
         if 'elb_port' not in domain.keys():
@@ -804,6 +855,7 @@ def issue_certificate_handler(event, context):
             if res is not True:
               logger.error("[main] An error occurred while attaching your server certificate to your ELB.")
 
+    # Multi CF distributions mode
     if 'cfs' in domain.keys():
         for cf in domain['cfs']:
             res = update_cf_server_certificate(conf, domain, cf['id'], iam_cert['ServerCertificateMetadata']['ServerCertificateId'])
@@ -867,6 +919,236 @@ def purge_expired_certificates_handler(event, context):
                 server_certificate['ServerCertificateName'],
                 server_certificate['Expiration']))
 
+def deploy_certificate_ssh_handler(event, context):
+    """
+    Deploy a certificate on its intended locations
+    """
+    if 'bucket' not in event:
+        logger.critical("[main] No bucket name has been provided. Exiting.")
+        exit(1)
+    s3_bucket = event['bucket']
+
+    if 'region' not in event.keys() and 'AWS_DEFAULT_REGION' not in os.environ.keys():
+        logger.critical("[main] Unable to determine AWS region code. Exiting.")
+        exit(1)
+    else:
+        if 'region' not in event.keys():
+            logger.warning("[main] Using local environment to determine AWS region code.")
+            s3_region = os.environ['AWS_DEFAULT_REGION']
+            logger.warning("[main] Local region set to '{0}'.".format(s3_region))
+        else:
+            s3_region = event['region']
+
+    if 'defaultkey' not in event:
+        logger.warning("[main] No default KMS key provided, defaulting to 'AES256'.")
+        kms_key = 'AES256'
+    else:
+        logger.info("[main] Using {0} as default KMS key.".format(event['defaultkey']))
+        kms_key = event['defaultkey']
+
+
+    s3_client = boto3.client('s3', config=Config(signature_version='s3v4', region_name=s3_region))
+
+    try:
+        conf = event['conf']
+    except KeyError as e:
+        logger.warning("[main] No configuration statement was provided, trying to load a default one.")
+
+        if 'configfile' not in event:
+            logger.warning("[main] Using 'letslambda.yml' as the default configuration file.")
+            letslambda_config = 'letslambda.yml'
+        else:
+            letslambda_config = event['configfile']
+
+        letslambda_config = clean_file_path(letslambda_config)
+
+        logger.info("[main] Retrieving configuration file '{0}' from bucket '{1}' in region '{2}' ".format(letslambda_config, s3_bucket, s3_region))
+        conf = load_config(s3_client, s3_bucket, letslambda_config)
+
+        if conf == None:
+            logger.critical("[main] Cannot load letslambda configuration. Exiting.")
+            exit(1)
+
+    logger.debug(json.dumps(conf))
+
+    conf['s3_client'] = s3_client
+    conf['s3_bucket'] = s3_bucket
+
+    if 'base_path' not in conf.keys():
+        conf['base_path'] = ''
+    else:
+        conf['base_path'] = clean_dir_path(conf['base_path'])
+
+    account_key = load_letsencrypt_account_key(conf)
+
+    domain = event['domain']
+
+    if 'ssh-host' not in domain.keys():
+        logger.error("[main] No SSH host information found for domain '{0}'. Nothing to do.".format(domain['name']))
+        return
+
+    ssh_conf = domain['ssh-host']
+
+    if 'host' not in ssh_conf.keys():
+        logger.error("[main] No SSH host url provided found for domain '{0}'. Nothing to do.".format(domain['name']))
+        return
+
+    ssh_host = urlparse(ssh_conf['host'])
+
+    if ssh_host.username is None:
+        logger.error("[main] No SSH username provided for domain '{0}'. Nothing to do.".format(domain['name']))
+        return
+
+    if ssh_host.password is None and 'private_key' not in ssh_conf.keys():
+        logger.error("[main] No password or SSH private key has been supplied. You *always* have an authentication method. Refusing to process domain '{0}'.".format(domain['name']))
+        return
+
+    ssh = paramiko.SSHClient()
+    hostkeys = ssh.get_host_keys()
+
+    try:
+
+        if 'host_public_keys' in ssh_conf.keys():
+            for host_key in ssh_conf['host_public_keys']:
+                key = host_key['key'].split(' ')
+                try:
+                    key_type = key[0]
+                    key_data = key[1]
+
+                    if key_type == 'ssh-dss':
+                        hostkey = paramiko.DSSKey(data=base64.b64decode(key_data))
+                    elif key_type == 'ssh-rsa':
+                        hostkey = paramiko.RSAKey(data=base64.b64decode(key_data))
+                    elif key_type == 'ecdsa-sha2-nistp256':
+                        hostkey = paramiko.ECDSAKey(data=base64.b64decode(key_data))
+                    elif key_type == 'ecdsa-sha2-nistp384':
+                        hostkey = paramiko.ECDSAKey(data=base64.b64decode(key_data))
+                    elif key_type == 'ecdsa-sha2-nistp521':
+                        hostkey = paramiko.ECDSAKey(data=base64.b64decode(key_data))
+                    else:
+                        continue
+
+                    hostkeys.add(hostname=ssh_host.hostname, keytype=key_type, key=hostkey)
+
+                except KeyError as e:
+                    logger.warning("[main] Failed to load SSH key for domain '{0}'".format(domain['name']))
+                    continue
+
+        if 'ignore_host_public_key' in ssh_conf.keys():
+            if ssh_conf['ignore_host_public_key'] == True:
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                logger.info("[main] SSH connection will be automatically accepted even if public host key doesn't match.")
+            else:
+                ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
+                logger.info("[main] SSH connection will be rejected if host public key doesn't match.")
+
+        pkey = None
+        if 'private_key' in ssh_conf.keys():
+            priv_key_info = urlparse(ssh_conf['private_key'])
+
+            c = {
+                's3_client': s3_client,
+                's3_bucket': priv_key_info.hostname
+            }
+            ssh_key = load_from_s3(c, clean_file_path(priv_key_info.path))
+
+
+            # current ssh private key headers:
+            # -----BEGIN DSA PRIVATE KEY----- (DSA/DSS) - supported
+            # -----BEGIN EC PRIVATE KEY----- (ECDSA) - supported
+            # -----BEGIN OPENSSH PRIVATE KEY----- (ED25519) - not supported
+            # -----BEGIN RSA PRIVATE KEY----- (RSA) - supported
+
+            key_type = ssh_key.splitlines()[0].split(' ')[1]
+            logger.debug("[main] SSH Private key type: '{0}'".format(key_type))
+
+            if key_type == 'RSA':
+                pkey = paramiko.RSAKey.from_private_key(StringIO.StringIO(ssh_key))
+            elif key_type is 'EC':
+                pkey = paramiko.ECDSAKey.from_private_key(StringIO.StringIO(ssh_key))
+            elif key_type is 'DSA':
+                pkey = paramiko.DSAKey.from_private_key(StringIO.StringIO(ssh_key))
+            else:
+                logger.error("[main] The SSH private key format '{0}' for domain '{1}' is not supported.".format(ssh_key_head.split(' ')[1], domain['name']))
+                if ssh_host.password is None:
+                    logger.error("[main] No password has been supplied. Not process domain '{0}'.".format(domain['name']))
+                    return
+                else:
+                    logger.error("[main] Authentication will attempt to fallback on password based authentication only.".format(domain['name']))
+
+
+
+        connect_args = {
+            'hostname': ssh_host.hostname,
+            'username': ssh_host.username
+        }
+        if ssh_host.port is not None:
+            connect_args['port'] = ssh_host.port
+
+        if ssh_host.password is not None:
+            connect_args['password'] = ssh_host.password
+
+        if pkey is not None:
+            connect_args['pkey'] = pkey
+
+        ssh.connect(**connect_args)
+        t = ssh.get_transport()
+        sftp = paramiko.SFTPClient.from_transport(t)
+
+        # ==== We are connected to the remot host ====
+
+
+        path_split = ssh_host.path.split('/')
+        x = 2
+        fs_path = ''
+        while (x < len(path_split)):
+            fs_path = ''
+            y = 1
+            while (y < x):
+                fs_path = fs_path + '/' + path_split[y]
+                y = y + 1
+            x = x + 1
+
+            try:
+                # folders may already exists, but we still attempt to recreate
+                # rather than reading each folder.
+                sftp.mkdir(fs_path)
+            except IOError as e:
+                logger.warning("[main] Failed to create folder '{0}' on host '{1}' for domain '{2}".format(fs_path, ssh_host.hostname, domain['name']))
+                logger.warning("[main] Error: {0}".format(e))
+
+        try:
+            exts = [ 'cert.pem', 'chain.pem', 'key.pem' ]
+            for ext in [ 'cert.pem', 'chain.pem', 'key.pem' ]:
+                fs_file = '/{0}'.format(clean_file_path('{0}/{1}.{2}'.format(fs_path, domain['name'], ext)))
+                s3_file = clean_file_path('/{0}/{1}.{2}'.format(domain['base_path'], domain['name'], ext))
+
+                s3_content = load_from_s3(conf, s3_file)
+
+                logger.info("[main] Installing 's3://{0}/{1}' to 'ssh://{2}@{3}{4}'.".format(
+                    conf['s3_bucket'],
+                    s3_file,
+                    ssh_host.username,
+                    ssh_host.hostname,
+                    fs_file))
+
+                f = sftp.open(fs_file, 'w')
+                f.write(s3_content)
+                f.close()
+
+        except IOError as e:
+            logger.warning("[main] Failed to change working folder '{0}' on host '{1}' for domain '{2}".format(fs_path, ssh_host.hostname, domain['name']))
+            logger.warning("[main] Error: {0}".format(e))
+
+        sftp.close()
+        ssh.close()
+
+    except (paramiko.SSHException, socket.error) as e:
+        logger.error("[main] Failed to deploy certificate over SSH on host '{0}' for domain '{1}'.".format(ssh_host.hostname, domain['name']))
+        logger.error("[main] Exception: {0}".format(e))
+        return
+
+
 def lambda_handler(event, context):
     """
     This is the Lambda function handler from which all executions are routed.
@@ -877,7 +1159,8 @@ def lambda_handler(event, context):
     routing = {
         'purge': purge_expired_certificates_handler, # removes expired certs. this is declared in the cloudformation template
         'issue_certificates': issue_certificates_handler, # issue multiple certificates. this is the routing path
-        'issue_certificate': issue_certificate_handler # issue a single certificate. this is usually executed via 'issue_certificates' routing path
+        'issue_certificate': issue_certificate_handler, # issue a single certificate. this is usually executed via 'issue_certificates' routing path
+        'deploy_certificate_ssh': deploy_certificate_ssh_handler # deploy any certificate onto its relevant location(s)
     }
 
     if 'action' in event.keys() and event['action'] in routing.keys():
