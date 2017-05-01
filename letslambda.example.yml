@@ -30,6 +30,18 @@ domains:
       - name: elb_name_3
         region: ap-southeast-1
         port: 443
+    ssh-hosts:
+      - host: ssh://username:password@hostname:port/path/
+        private_key: s3://bucketname/path/filename
+        ignore_host_public_key: false
+        host_public_keys:
+         - key: ssh-dss AAAAB3NzaC1....
+         - key: ssh-rsa AAAAB3NzaC1....
+         - key: ecdsa-sha2-nistp256 AAAAE2VjZ....
+         - key: ssh-ed25519 AAAAC3NzaC1...
+    cfs:
+      - id: XXXXXXXXXXXXXX
+      - id: YYYYYYYYYYYYYY
   - name: old.example.com
     dns_zone: example.com
     dns_provider: route53

@@ -27,6 +27,15 @@ domains:
     cfs:
       - id: XXXXXXXXXXXXXX
       - id: YYYYYYYYYYYYYY
+    ssh-hosts:
+      - host: ssh://username:password@hostname:port/path/
+        private_key: s3://bucketname/path/to/private/ssh/key
+        ignore_host_public_key: false
+        host_public_keys:
+         - key: ssh-dss AAAAB3NzaC1....
+         - key: ssh-rsa AAAAB3NzaC1....
+         - key: ecdsa-sha2-nistp256 AAAAE2VjZ....
+         - key: ssh-ed25519 AAAAC3NzaC1...
   - name: api.anotherexample.com
     dns_zone: anotherexample.com
     dns_provider: ovh
