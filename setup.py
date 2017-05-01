@@ -12,6 +12,7 @@ install_requires = [
     'boto3>=1,<2',
     'dnspython>=1.15.0,<2',
     'ovh>=0.4.7,<0.5',
+    'paramiko>-2.1',
     'pycrypto==2.6.1',
     'pyOpenSSL',
     'pytz',
