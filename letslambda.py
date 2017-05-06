@@ -543,6 +543,109 @@ def update_dynamodb_item(conf, domain):
         return True
 
 
+def deploy_certificates_handler(event, context):
+    """
+    This is the event handler that will deploy the issued certificates
+    """
+
+    if 'bucket' not in event:
+        logger.critical("[main] No bucket name has been provided. Exiting.")
+        exit(1)
+    s3_bucket = event['bucket']
+
+    if 'region' not in event.keys() and 'AWS_DEFAULT_REGION' not in os.environ.keys():
+        logger.critical("[main] Unable to determine AWS region code. Exiting.")
+        exit(1)
+    else:
+        if 'region' not in event.keys():
+            logger.warning("[main] Using local environment to determine AWS region code.")
+            s3_region = os.environ['AWS_DEFAULT_REGION']
+            logger.warning("[main] Local region set to '{0}'.".format(s3_region))
+        else:
+            s3_region = event['region']
+
+    if 'defaultkey' not in event:
+        logger.warning("[main] No default KMS key provided, defaulting to 'AES256'.")
+        kms_key = 'AES256'
+    else:
+        logger.info("[main] Using {0} as default KMS key.".format(event['defaultkey']))
+        kms_key = event['defaultkey']
+
+    if 'configfile' not in event:
+        logger.warning("[main] Using 'letslambda.yml' as the default configuration file.")
+        letslambda_config = 'letslambda.yml'
+    else:
+        letslambda_config = event['configfile']
+
+    letslambda_config = clean_file_path(letslambda_config)
+
+    logger.info("[main] Retrieving configuration file '{0}' from bucket '{1}' in region '{2}' ".format(letslambda_config, s3_bucket, s3_region))
+    s3_client = boto3.client('s3', config=Config(signature_version='s3v4', region_name=s3_region))
+
+    conf = load_config(s3_client, s3_bucket, letslambda_config)
+    if conf == None:
+        logger.critical("[main] Cannot load letslambda configuration. Exiting.")
+        exit(1)
+
+    if 'notification_table' not in event:
+        logger.error("[main] No DynamoDB table has been provided, so no notification will be issued.")
+    else:
+        conf['notification_table'] = event['notification_table']
+
+    conf['region'] = os.environ['AWS_DEFAULT_REGION']
+    conf['s3_bucket'] = s3_bucket
+    conf['letslambda_config'] = letslambda_config
+    conf['kms_key'] = kms_key
+
+    if 'base_path' not in conf.keys():
+        conf['base_path'] = ''
+    else:
+        conf['base_path'] = clean_dir_path(conf['base_path'])
+
+    for domain in conf['domains']:
+        if 'ssh-hosts' in domain.keys():
+            for sshhost in domain['ssh-hosts']:
+                if 'host' not in sshhost.keys():
+                    logger.error("[main] No SSH url specified. Skipping this SSH host.")
+                    continue
+
+                payload = event
+                payload['action'] = 'deploy_certificate_ssh'
+
+                payload['domain'] = domain
+                payload['domain']['ssh-host'] = sshhost
+                payload['domain'].pop('ssh-hosts', None) # remove unecessary data
+
+                payload['conf'] = conf
+                payload['conf'].pop('domains', None)
+
+                lambda_payload = json.dumps(payload, ensure_ascii=False)
+
+                lambda_client = boto3.client('lambda')
+
+                logger.debug("[main] Execution payload for domain '{0}'.".format(
+                    domain['name']
+                ))
+                logger.debug(lambda_payload)
+
+                try:
+                    r = lambda_client.invoke(
+                        FunctionName=context.function_name,
+                        InvocationType='Event',
+                        LogType='Tail',
+                        Payload=lambda_payload)
+
+                    logger.debug("[main] Execution in progress for domain '{0}'. RequestId: '{1}', StatusCode: '{2}'".format(
+                        domain['name'],
+                        r['ResponseMetadata']['RequestId'],
+                        r['StatusCode']
+                    ))
+                except ClientError as e:
+                    logger.error("[main] Failed to execute lambda function '{0}'. Skipping domain '{1}'.".format(context.function_name, domain['name']))
+                    logger.error("[main] Error: {0}".format(e))
+                    continue
+
+
 def issue_certificates_handler(event, context):
     """
     This is the event handler that will perform the DNS challenge and retrieve
@@ -1051,30 +1154,31 @@ def deploy_certificate_ssh_handler(event, context):
                 's3_bucket': priv_key_info.hostname
             }
             ssh_key = load_from_s3(c, clean_file_path(priv_key_info.path))
-
-
-            # current ssh private key headers:
-            # -----BEGIN DSA PRIVATE KEY----- (DSA/DSS) - supported
-            # -----BEGIN EC PRIVATE KEY----- (ECDSA) - supported
-            # -----BEGIN OPENSSH PRIVATE KEY----- (ED25519) - not supported
-            # -----BEGIN RSA PRIVATE KEY----- (RSA) - supported
-
-            key_type = ssh_key.splitlines()[0].split(' ')[1]
-            logger.debug("[main] SSH Private key type: '{0}'".format(key_type))
-
-            if key_type == 'RSA':
-                pkey = paramiko.RSAKey.from_private_key(StringIO.StringIO(ssh_key))
-            elif key_type is 'EC':
-                pkey = paramiko.ECDSAKey.from_private_key(StringIO.StringIO(ssh_key))
-            elif key_type is 'DSA':
-                pkey = paramiko.DSAKey.from_private_key(StringIO.StringIO(ssh_key))
+            if ssh_key == None:
+                logger.error("[main] Failed to load SSH private key '{0}'.".format(priv_key_info.path))
             else:
-                logger.error("[main] The SSH private key format '{0}' for domain '{1}' is not supported.".format(ssh_key_head.split(' ')[1], domain['name']))
-                if ssh_host.password is None:
-                    logger.error("[main] No password has been supplied. Not process domain '{0}'.".format(domain['name']))
-                    return
+                # current ssh private key headers:
+                # -----BEGIN DSA PRIVATE KEY----- (DSA/DSS) - supported
+                # -----BEGIN EC PRIVATE KEY----- (ECDSA) - supported
+                # -----BEGIN OPENSSH PRIVATE KEY----- (ED25519) - not supported
+                # -----BEGIN RSA PRIVATE KEY----- (RSA) - supported
+
+                key_type = ssh_key.splitlines()[0].split(' ')[1]
+                logger.debug("[main] SSH Private key type: '{0}'".format(key_type))
+
+                if key_type == 'RSA':
+                    pkey = paramiko.RSAKey.from_private_key(StringIO.StringIO(ssh_key))
+                elif key_type is 'EC':
+                    pkey = paramiko.ECDSAKey.from_private_key(StringIO.StringIO(ssh_key))
+                elif key_type is 'DSA':
+                    pkey = paramiko.DSAKey.from_private_key(StringIO.StringIO(ssh_key))
                 else:
-                    logger.error("[main] Authentication will attempt to fallback on password based authentication only.".format(domain['name']))
+                    logger.error("[main] The SSH private key format '{0}' for domain '{1}' is not supported.".format(ssh_key_head.split(' ')[1], domain['name']))
+                    if ssh_host.password is None:
+                        logger.error("[main] No password has been supplied. Not process domain '{0}'.".format(domain['name']))
+                        return
+                    else:
+                        logger.error("[main] Authentication will attempt to fallback on password based authentication only.".format(domain['name']))
 
 
 
@@ -1160,6 +1264,7 @@ def lambda_handler(event, context):
         'purge': purge_expired_certificates_handler, # removes expired certs. this is declared in the cloudformation template
         'issue_certificates': issue_certificates_handler, # issue multiple certificates. this is the routing path
         'issue_certificate': issue_certificate_handler, # issue a single certificate. this is usually executed via 'issue_certificates' routing path
+        'deploy_certificates': deploy_certificates_handler, # deploy multiple certificates without issuing them
         'deploy_certificate_ssh': deploy_certificate_ssh_handler # deploy any certificate onto its relevant location(s)
     }
 
