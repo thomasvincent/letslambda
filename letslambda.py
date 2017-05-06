@@ -619,7 +619,7 @@ def deploy_certificates_handler(event, context):
                 payload['conf'] = conf
                 payload['conf'].pop('domains', None)
 
-                lambda_payload = json.dumps(payload, ensure_ascii=False)
+                lambda_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
                 lambda_client = boto3.client('lambda')
 
@@ -720,7 +720,7 @@ def issue_certificates_handler(event, context):
         payload['conf'] = conf
         payload['conf'].pop('domains', None)
 
-        lambda_payload = json.dumps(payload, ensure_ascii=False)
+        lambda_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
         lambda_client = boto3.client('lambda')
 
@@ -892,7 +892,7 @@ def issue_certificate_handler(event, context):
             payload['conf'].pop('s3_client', None) # remove python object
             payload['conf'].pop('domains', None) # remove unecessary data
 
-            lambda_payload = json.dumps(payload, ensure_ascii=False)
+            lambda_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
             lambda_client = boto3.client('lambda')
 
@@ -1072,7 +1072,7 @@ def deploy_certificate_ssh_handler(event, context):
             logger.critical("[main] Cannot load letslambda configuration. Exiting.")
             exit(1)
 
-    logger.debug(json.dumps(conf))
+    logger.debug(json.dumps(conf), ensure_ascii=False, sort_keys=True)
 
     conf['s3_client'] = s3_client
     conf['s3_bucket'] = s3_bucket
@@ -1259,7 +1259,7 @@ def lambda_handler(event, context):
     The appropriate routing is determine by event['action']
     """
     logger.error("[main] Starting execution of Let's Lamda")
-    logger.error(json.dumps(event))
+    logger.error(json.dumps(event), ensure_ascii=False, sort_keys=True)
     routing = {
         'purge': purge_expired_certificates_handler, # removes expired certs. this is declared in the cloudformation template
         'issue_certificates': issue_certificates_handler, # issue multiple certificates. this is the routing path
