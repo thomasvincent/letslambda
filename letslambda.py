@@ -628,6 +628,8 @@ def deploy_certificates_handler(event, context):
                 ))
                 logger.debug(lambda_payload)
 
+                # __DEBUG__
+
                 try:
                     r = lambda_client.invoke(
                         FunctionName=context.function_name,
@@ -728,6 +730,8 @@ def issue_certificates_handler(event, context):
             domain['name']
         ))
         logger.debug(lambda_payload)
+
+        # __DEBUG__
 
         try:
             r = lambda_client.invoke(
@@ -901,7 +905,7 @@ def issue_certificate_handler(event, context):
             ))
             logger.debug(lambda_payload)
 
-            continue
+            # __DEBUG__
 
             try:
                 r = lambda_client.invoke(
