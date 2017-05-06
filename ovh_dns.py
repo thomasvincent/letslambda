@@ -28,13 +28,15 @@ def ovh_create_dns_challenge(logger, conf, domain, dns_payload):
     ovh_auth = json.loads(domain['dns_auth'])[0]
     client = ovh.Client(**ovh_auth)
 
-    acme_domain = '{0}.{1}'.format(
-        acme_domain,
-        domain['name'].replace(
-            '.{0}'.format(domain['dns_zone']),
-            ''
+    # if not top level of domain
+    if domain['name'] != domain['dns_zone']:
+        acme_domain = '{0}.{1}'.format(
+            acme_domain,
+            domain['name'].replace(
+                '.{0}'.format(domain['dns_zone']),
+                ''
+            )
         )
-    )
 
     try:
         result = client.get('/domain/zone/{0}/record'.format(domain['dns_zone']),
