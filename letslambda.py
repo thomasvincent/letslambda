@@ -1072,7 +1072,7 @@ def deploy_certificate_ssh_handler(event, context):
             logger.critical("[main] Cannot load letslambda configuration. Exiting.")
             exit(1)
 
-    logger.debug(json.dumps(conf), ensure_ascii=False, sort_keys=True)
+    logger.debug(json.dumps(conf, ensure_ascii=False, sort_keys=True))
 
     conf['s3_client'] = s3_client
     conf['s3_bucket'] = s3_bucket
@@ -1168,12 +1168,12 @@ def deploy_certificate_ssh_handler(event, context):
 
                 if key_type == 'RSA':
                     pkey = paramiko.RSAKey.from_private_key(StringIO.StringIO(ssh_key))
-                elif key_type is 'EC':
+                elif key_type == 'EC':
                     pkey = paramiko.ECDSAKey.from_private_key(StringIO.StringIO(ssh_key))
-                elif key_type is 'DSA':
+                elif key_type == 'DSA':
                     pkey = paramiko.DSAKey.from_private_key(StringIO.StringIO(ssh_key))
                 else:
-                    logger.error("[main] The SSH private key format '{0}' for domain '{1}' is not supported.".format(ssh_key_head.split(' ')[1], domain['name']))
+                    logger.error("[main] The SSH private key format '{0}' for domain '{1}' is not supported.".format(ssh_key.splitlines()[0].split(' ')[1], domain['name']))
                     if ssh_host.password is None:
                         logger.error("[main] No password has been supplied. Not process domain '{0}'.".format(domain['name']))
                         return
@@ -1259,7 +1259,7 @@ def lambda_handler(event, context):
     The appropriate routing is determine by event['action']
     """
     logger.error("[main] Starting execution of Let's Lamda")
-    logger.error(json.dumps(event), ensure_ascii=False, sort_keys=True)
+    logger.error(json.dumps(event, ensure_ascii=False, sort_keys=True))
     routing = {
         'purge': purge_expired_certificates_handler, # removes expired certs. this is declared in the cloudformation template
         'issue_certificates': issue_certificates_handler, # issue multiple certificates. this is the routing path
