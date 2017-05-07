@@ -1244,6 +1244,35 @@ def deploy_certificate_ssh_handler(event, context):
                 f.write(s3_content)
                 f.close()
 
+                if 'file_mode' in ssh_conf.keys():
+                    try:
+                        sftp.chmod(fs_file, ssh_conf['file_mode'])
+                    except IOError as e:
+                        logger.error("[main] Failed to set permissions '{0}' on '{1}'.".format(
+                            ssh_conf['file_mode'],
+                            fs_file))
+                        logger.warning("[main] Error: {0}".format(e))
+
+                if 'file_uid' in ssh_conf.keys() or 'file_gid' in ssh_conf.keys():
+                    fs_file_stats = sftp.stat(fs_file)
+                    file_uid = fs_file_stats.st_uid
+                    file_gid = fs_file_stats.st_gid
+
+                    if 'file_uid' in ssh_conf.keys():
+                        file_uid = int(ssh_conf['file_uid'])
+
+                    if 'file_gid' in ssh_conf.keys():
+                        file_gid = int(ssh_conf['file_gid'])
+
+                    try:
+                        sftp.chown(fs_file, file_uid, file_gid)
+                    except IOError as e:
+                        logger.error("[main] Failed to set ownership '{0}:{1}' on '{2}'.".format(
+                            file_uid,
+                            file_gid,
+                            fs_file))
+                        logger.warning("[main] Error: {0}".format(e))
+
         except IOError as e:
             logger.warning("[main] Failed to change working folder '{0}' on host '{1}' for domain '{2}".format(fs_path, ssh_host.hostname, domain['name']))
             logger.warning("[main] Error: {0}".format(e))
