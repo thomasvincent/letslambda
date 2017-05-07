@@ -31,6 +31,9 @@ domains:
       - host: ssh://username:password@hostname:port/path/
         private_key: s3://bucketname/path/to/private/ssh/key
         ignore_host_public_key: false
+        file_uid: 1001
+        file_gid: 1001
+        file_mode: 0640
         host_public_keys:
          - key: ssh-dss AAAAB3NzaC1....
          - key: ssh-rsa AAAAB3NzaC1....
