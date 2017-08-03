@@ -117,7 +117,7 @@ def _wait_dns_refresh(logger, domain, subDomain, value, timeout = 60):
     wait_time = 2
     total_wait_time = 0
     ret = None
-    nx_retry = 2
+    nx_retry = 10
     nx_wait_time = 2
 
     # FIXME when domain doesn't exists
