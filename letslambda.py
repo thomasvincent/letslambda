@@ -133,7 +133,7 @@ def get_dns_challenge(authorization_resource):
     dns_challenges = filter(lambda x: isinstance(x.chall, challenges.DNS01), authorization_resource.body.challenges)
     return list(dns_challenges)[0]
 
-def save_certificates_to_s3(conf, domain, chain_certificate, certificate):
+def save_certificates_to_s3(conf, domain, chain_certificate, certificate, key):
     """
     Save/overwite newly requested certificate and corresponding chain certificate
     """
@@ -143,6 +143,20 @@ def save_certificates_to_s3(conf, domain, chain_certificate, certificate):
 
     logger.info("[main] Saving chain certificate to S3")
     save_to_s3(conf, domain['base_path']+domain['name']+".cert.pem", certificate)
+
+    suffix = "\n"
+    if key.endswith(suffix) is not True:
+        key = key + suffix
+
+    if certificate.endswith(suffix) is not True:
+        certificate = certificate + suffix
+
+    if chain_certificate.endswith(suffix) is not True:
+        chain_certificate = chain_certificate + suffix
+
+    bundle = key + certificate + chain_certificate
+    logger.info("[main] Saving certificate bundle to S3")
+    save_to_s3(conf, domain['base_path']+domain['name']+".bundle.pem", certificate)
 
 
 def upload_to_iam(conf, domain, chain_certificate, certificate, key):
@@ -871,7 +885,7 @@ def issue_certificate_handler(event, context):
         logger.critical("[main] An error occurred while requesting the signed certificate. Skipping domain '{0}'.".format(domain['name']))
         exit(1)
 
-    save_certificates_to_s3(conf, domain, chain, certificate)
+    save_certificates_to_s3(conf, domain, chain, certificate, key)
     update_dynamodb_item(conf, domain)
     iam_cert = upload_to_iam(conf, domain, chain, certificate, key)
     if iam_cert is False or iam_cert['ResponseMetadata']['HTTPStatusCode'] is not 200:
@@ -1226,11 +1240,18 @@ def deploy_certificate_ssh_handler(event, context):
                 logger.warning("[main] Error: {0}".format(e))
 
         try:
-            for ext in [ 'cert.pem', 'chain.pem', 'key.' + conf['extension'] ]:
+            for ext in [ 'bundle.pem', 'cert.pem', 'chain.pem', 'key.' + conf['extension'] ]:
                 fs_file = '/{0}'.format(clean_file_path('{0}/{1}.{2}'.format(fs_path, domain['name'], ext)))
                 s3_file = clean_file_path('/{0}/{1}.{2}'.format(domain['base_path'], domain['name'], ext))
 
                 s3_content = load_from_s3(conf, s3_file)
+
+                if s3_content == None:
+                    if ext == 'bundle.pem':
+                        logger.warning("[main] Failed to load bundle file '{0}'. Skipping it...".format(s3_file))
+                        continue
+                    else
+                        logger.error("[main] Failed to load '{0}'".format(s3_file))
 
                 logger.info("[main] Installing 's3://{0}/{1}' to 'ssh://{2}@{3}{4}'.".format(
                     conf['s3_bucket'],
