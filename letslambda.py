@@ -1226,8 +1226,7 @@ def deploy_certificate_ssh_handler(event, context):
                 logger.warning("[main] Error: {0}".format(e))
 
         try:
-            exts = [ 'cert.pem', 'chain.pem', 'key.pem' ]
-            for ext in [ 'cert.pem', 'chain.pem', 'key.pem' ]:
+            for ext in [ 'cert.pem', 'chain.pem', 'key.' + conf['extension'] ]:
                 fs_file = '/{0}'.format(clean_file_path('{0}/{1}.{2}'.format(fs_path, domain['name'], ext)))
                 s3_file = clean_file_path('/{0}/{1}.{2}'.format(domain['base_path'], domain['name'], ext))
 
