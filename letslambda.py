@@ -26,6 +26,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from Crypto import Random
 from Crypto.PublicKey import RSA
+from Crypto.Util import asn1
 from datetime import datetime
 from OpenSSL import crypto
 from ovh import exceptions as ovhExceptions
@@ -133,10 +134,45 @@ def get_dns_challenge(authorization_resource):
     dns_challenges = filter(lambda x: isinstance(x.chall, challenges.DNS01), authorization_resource.body.challenges)
     return list(dns_challenges)[0]
 
+def check_key_matches_certificate(certificate_pem, key_pem):
+    """
+    Verify that a private key matches a certificate
+    See https://www.v13.gr/blog/?p=325
+    """
+    cert = crypto.load_certificate(crypto.FILETYPE_PEM, certificate_pem)
+    key = crypto.load_privatekey(crypto.FILETYPE_PEM, key_pem)
+
+    pub = cert.get_pubkey()
+
+    if pub.type() != crypto.TYPE_RSA or key.type() != crypto.TYPE_RSA:
+        logger.warning("[main] Private Key and Certificate matching can only be done on RSA types")
+        return True
+
+    pub_asn1 = crypto.dump_privatekey(crypto.FILETYPE_ASN1, pub)
+    pub_der = asn1.DerSequence()
+    pub_der.decode(pub_asn1)
+    pub_modulus = pub_der[1]
+
+    key_asn1 = crypto.dump_privatekey(crypto.FILETYPE_ASN1, key)
+    key_der = asn1.DerSequence()
+    key_der.decode(key_asn1)
+    key_modulus = key_der[1]
+
+    if pub_modulus == key_modulus:
+        return True
+    else:
+        logger.error("[main] Private Key and Certificate do not match")
+        return False
+
 def save_certificates_to_s3(conf, domain, chain_certificate, certificate, key):
     """
     Save/overwite newly requested certificate and corresponding chain certificate
     """
+
+    if check_key_matches_certificate(certificate, key) != True:
+        logger.error("[main] Private Key and Certificate do not match, so not saving/overwritting")
+        return False
+
     if chain_certificate is not False:
         logger.info("[main] Saving certificate to S3")
         save_to_s3(conf, domain['base_path']+domain['name']+".chain.pem", chain_certificate)
@@ -1250,7 +1286,7 @@ def deploy_certificate_ssh_handler(event, context):
                     if ext == 'bundle.pem':
                         logger.warning("[main] Failed to load bundle file '{0}'. Skipping it...".format(s3_file))
                         continue
-                    else
+                    else:
                         logger.error("[main] Failed to load '{0}'".format(s3_file))
 
                 logger.info("[main] Installing 's3://{0}/{1}' to 'ssh://{2}@{3}{4}'.".format(
