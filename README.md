@@ -2,7 +2,23 @@
 
 A python script that gets to renew your SSL certificates from AWS Lambda via DNS challenge using [Let's Encrypt](https://letsencrypt.org/) services. It stores your keys and certificates in a S3 bucket. If the keys don't exists, it generates them and re-uses them later (useful for [public key pinning](https://en.wikipedia.org/wiki/HTTP_Public_Key_Pinning)).
 
-All in all, the script talks to [Let's Encrypt](https://letsencrypt.org/) and Amazon [Route53](https://aws.amazon.com/route53/) (for the DNS challenge), Amazon [S3](https://aws.amazon.com/s3/) and Amazon [IAM](https://aws.amazon.com/iam/) (to store your certificates) and Amazon [Elastic Load Balancing](https://aws.amazon.com/elasticloadbalancing/). And optionally, Amazon [KMS](https://aws.amazon.com/kms/) can be used to encrypt your data in your S3 bucket.
+All in all, the script talks to [Let's Encrypt](https://letsencrypt.org/) and Amazon [Route53](https://aws.amazon.com/route53/), [OVH](https://www.ovh.co.uk/domains/dns_management_service.xml), (for the DNS challenge), Amazon [S3](https://aws.amazon.com/s3/) and Amazon [IAM](https://aws.amazon.com/iam/) (to store your certificates) and Amazon [Elastic Load Balancing](https://aws.amazon.com/elasticloadbalancing/). And optionally, Amazon [KMS](https://aws.amazon.com/kms/) can be used to encrypt your data in your S3 bucket.
+
+## Supported Services ##
+Let's Lambda is being built in a modular way so it can easily be extended through plugins.
+
+### DNS Providers ###
+
+ - Amazon [Route53](https://aws.amazon.com/route53/)
+ - [OVH](https://www.ovh.co.uk/domains/dns_management_service.xml)
+
+### Storage Providers ###
+
+ - Amazon [Simple Storage Service](http://docs.aws.amazon.com/AmazonS3/latest/dev/Welcome.html) (S3)
+ - AWS [IAM Server Certificates](http://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_server-certs.html)
+ - Amazon [CloudFront](http://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Introduction.html)
+ - AWS [Elastic Load Balancer](http://docs.aws.amazon.com/elasticloadbalancing/latest/userguide/what-is-load-balancing.html) (ELB)
+ - [Secure Shell](https://en.wikipedia.org/wiki/Secure_Shell) (SSH)
 
 ## Configuration ##
 The configuration file is based on YAML. It should be easy to understand by reviewing the provided configuration. Nonetheless, here is a short explanation of each configuration directive
