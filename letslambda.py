@@ -923,12 +923,10 @@ def issue_certificate_handler(event, context):
 
     save_certificates_to_s3(conf, domain, chain, certificate, key)
     update_dynamodb_item(conf, domain)
-    iam_cert = upload_to_iam(conf, domain, chain, certificate, key)
-    if iam_cert is False or iam_cert['ResponseMetadata']['HTTPStatusCode'] is not 200:
-        logger.critical("[main] An error occurred while saving your server certificate in IAM. Skipping domain '{0}'.".format(domain['name']))
-        exit(1)
 
-    # Multi SSH servers mode
+    logger.info("[main] Starting certificate deployment for '{0}'.".format(domain['name']))
+
+    # Multi SSH servers mode (IAM not required)
     if 'ssh-hosts' in domain.keys():
         for sshhost in domain['ssh-hosts']:
             if 'host' not in sshhost.keys():
@@ -973,6 +971,11 @@ def issue_certificate_handler(event, context):
                 logger.error("[main] Failed to execute lambda function '{0}'. Skipping SSH deployment for domain '{1}'.".format(context.function_name, domain['name']))
                 logger.error("[main] Error: {0}".format(e))
                 continue
+
+    iam_cert = upload_to_iam(conf, domain, chain, certificate, key)
+    if iam_cert is False or iam_cert['ResponseMetadata']['HTTPStatusCode'] is not 200:
+        logger.critical("[main] An error occurred while saving your server certificate in IAM. Skipping domain '{0}'.".format(domain['name']))
+        exit(1)
 
 
     # single ELB mode (compatibility)
