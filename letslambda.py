@@ -600,12 +600,12 @@ def deploy_certificates_handler(event, context):
 
     if 'bucket' not in event:
         logger.critical("[main] No bucket name has been provided. Exiting.")
-        exit(1)
+        return 1
     s3_bucket = event['bucket']
 
     if 'region' not in event.keys() and 'AWS_DEFAULT_REGION' not in os.environ.keys():
         logger.critical("[main] Unable to determine AWS region code. Exiting.")
-        exit(1)
+        return 1
     else:
         if 'region' not in event.keys():
             logger.warning("[main] Using local environment to determine AWS region code.")
@@ -635,7 +635,7 @@ def deploy_certificates_handler(event, context):
     conf = load_config(s3_client, s3_bucket, letslambda_config)
     if conf == None:
         logger.critical("[main] Cannot load letslambda configuration. Exiting.")
-        exit(1)
+        return 1
 
     if 'notification_table' not in event:
         logger.error("[main] No DynamoDB table has been provided, so no notification will be issued.")
@@ -706,12 +706,12 @@ def issue_certificates_handler(event, context):
 
     if 'bucket' not in event:
         logger.critical("[main] No bucket name has been provided. Exiting.")
-        exit(1)
+        return 1
     s3_bucket = event['bucket']
 
     if 'region' not in event.keys() and 'AWS_DEFAULT_REGION' not in os.environ.keys():
         logger.critical("[main] Unable to determine AWS region code. Exiting.")
-        exit(1)
+        return 1
     else:
         if 'region' not in event.keys():
             logger.warning("[main] Using local environment to determine AWS region code.")
@@ -741,7 +741,7 @@ def issue_certificates_handler(event, context):
     conf = load_config(s3_client, s3_bucket, letslambda_config)
     if conf == None:
         logger.critical("[main] Cannot load letslambda configuration. Exiting.")
-        exit(1)
+        return 1
 
     if 'notification_table' not in event:
         logger.error("[main] No DynamoDB table has been provided, so no notification will be issued.")
@@ -782,7 +782,6 @@ def issue_certificates_handler(event, context):
         logger.debug(lambda_payload)
 
         # __DEBUG__
-
         try:
             r = lambda_client.invoke(
                 FunctionName=context.function_name,
@@ -800,6 +799,7 @@ def issue_certificates_handler(event, context):
             logger.error("[main] Error: {0}".format(e))
             continue
 
+    return 0
 
 def issue_certificate_handler(event, context):
     """
@@ -810,12 +810,12 @@ def issue_certificate_handler(event, context):
 
     if 'bucket' not in event:
         logger.critical("[main] No bucket name has been provided. Exiting.")
-        exit(1)
+        return 1
     s3_bucket = event['bucket']
 
     if 'region' not in event.keys() and 'AWS_DEFAULT_REGION' not in os.environ.keys():
         logger.critical("[main] Unable to determine AWS region code. Exiting.")
-        exit(1)
+        return 1
     else:
         if 'region' not in event.keys():
             logger.warning("[main] Using local environment to determine AWS region code.")
@@ -852,7 +852,7 @@ def issue_certificate_handler(event, context):
 
         if conf == None:
             logger.critical("[main] Cannot load letslambda configuration. Exiting.")
-            exit(1)
+            return 1
 
     if 'notification_table' not in event:
         logger.warning("[main] No DynamoDB table has been provided, so no notification will be issued.")
@@ -879,7 +879,7 @@ def issue_certificate_handler(event, context):
 
     if 'dns_zone' not in domain.keys():
         logger.critical("[main] Missing parameter 'dns_zone' for domain '{0}'. Skipping domain.".format(domain['name']))
-        exit(1)
+        return 1
 
     if 'kmsKeyArn' not in domain.keys():
         domain['kmsKeyArn'] = conf['kms_key']
@@ -906,7 +906,7 @@ def issue_certificate_handler(event, context):
     res = answer_dns_challenge(conf, acme_client, domain, challenge)
     if res is not True:
         logger.critical("[main] An error occurred while answering the DNS challenge. Skipping domain '{0}'.".format(domain['name']))
-        exit(1)
+        return 1
 
     time_spent = 0.0
     while private_key_thread.is_alive() == True:
@@ -919,7 +919,7 @@ def issue_certificate_handler(event, context):
     (chain, certificate, key) = request_certificate(conf, domain, acme_client, authorization_resource)
     if key == False or certificate == False:
         logger.critical("[main] An error occurred while requesting the signed certificate. Skipping domain '{0}'.".format(domain['name']))
-        exit(1)
+        return 1
 
     save_certificates_to_s3(conf, domain, chain, certificate, key)
     update_dynamodb_item(conf, domain)
@@ -975,7 +975,7 @@ def issue_certificate_handler(event, context):
     iam_cert = upload_to_iam(conf, domain, chain, certificate, key)
     if iam_cert is False or iam_cert['ResponseMetadata']['HTTPStatusCode'] is not 200:
         logger.critical("[main] An error occurred while saving your server certificate in IAM. Skipping domain '{0}'.".format(domain['name']))
-        exit(1)
+        return 1
 
 
     # single ELB mode (compatibility)
@@ -1022,6 +1022,8 @@ def issue_certificate_handler(event, context):
             if res is not True:
                 logger.error("[main] An error occurred while attaching your server certificate to your CloudFront distribution")
 
+    return 0
+
 
 def purge_expired_certificates_handler(event, context):
     """
@@ -1029,12 +1031,12 @@ def purge_expired_certificates_handler(event, context):
     """
     if 'bucket' not in event:
         logger.critical("[main] No bucket name has been provided. Exiting.")
-        exit(1)
+        return 1
     s3_bucket = event['bucket']
 
     if 'region' not in event.keys() and 'AWS_DEFAULT_REGION' not in os.environ.keys():
         logger.critical("[main] Unable to determine AWS region code. Exiting.")
-        exit(1)
+        return 1
     else:
         if 'region' not in event.keys():
             logger.warning("[main] Using local environment to determine AWS region code.")
@@ -1057,7 +1059,7 @@ def purge_expired_certificates_handler(event, context):
     conf = load_config(s3_client, s3_bucket, letslambda_config)
     if conf == None:
         logger.critical("[main] Cannot load letslambda configuration. Exiting.")
-        exit(1)
+        return 1
 
     conf['region'] = os.environ['AWS_DEFAULT_REGION']
     conf['s3_client'] = s3_client
@@ -1067,7 +1069,7 @@ def purge_expired_certificates_handler(event, context):
     server_certificates = list_expired_server_certificates(conf)
     if server_certificates == False:
         logger.critical("[main] Cannot load the list of IAM server certificates. Exiting.")
-        exit(1)
+        return 1
 
     if 'delete_expired_certificates' in conf.keys() and conf['delete_expired_certificates'] == True:
         for server_certificate in server_certificates:
@@ -1085,12 +1087,12 @@ def deploy_certificate_ssh_handler(event, context):
     """
     if 'bucket' not in event:
         logger.critical("[main] No bucket name has been provided. Exiting.")
-        exit(1)
+        return 1
     s3_bucket = event['bucket']
 
     if 'region' not in event.keys() and 'AWS_DEFAULT_REGION' not in os.environ.keys():
         logger.critical("[main] Unable to determine AWS region code. Exiting.")
-        exit(1)
+        return 1
     else:
         if 'region' not in event.keys():
             logger.warning("[main] Using local environment to determine AWS region code.")
@@ -1127,7 +1129,7 @@ def deploy_certificate_ssh_handler(event, context):
 
         if conf == None:
             logger.critical("[main] Cannot load letslambda configuration. Exiting.")
-            exit(1)
+            return 1
 
     logger.debug(json.dumps(conf, ensure_ascii=False, sort_keys=True))
 
@@ -1361,6 +1363,6 @@ def lambda_handler(event, context):
     }
 
     if 'action' in event.keys() and event['action'] in routing.keys():
-        routing[event['action']](event, context)
+        return routing[event['action']](event, context)
     else:
-        issue_certificates_handler(event, context)
+        return issue_certificates_handler(event, context)
