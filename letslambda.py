@@ -411,11 +411,11 @@ def request_certificate(conf, domain, client, auth_resource):
     try:
         (certificate, ar) = client.poll_and_request_issuance(ComparableX509(csr), [auth_resource])
     except errors.PollError as e:
-        logger.error("[main] Failed to get certificate issuance for '{0}'.".format(domain['name']))
+        logger.error("[main](poll) Failed to get certificate issuance for '{0}'.".format(domain['name']))
         logger.error("[main] Error: {0}".format(e))
         return (False, False, False)
     except messages.Error as e:
-        logger.error("[main] Failed to get certificate issuance for '{0}'.".format(domain['name']))
+        logger.error("[main](message) Failed to get certificate issuance for '{0}'.".format(domain['name']))
         logger.error("[main] Error: {0}".format(e))
         return (False, False, False)
 
@@ -763,14 +763,11 @@ def issue_certificates_handler(event, context):
     # by multiple child functions at the same time
     conf['s3_client'] = s3_client
     account_key = load_letsencrypt_account_key(conf)
-    conf.pop('s3_client', None)
 
     for domain in conf['domains']:
         payload = event
         payload['action'] = 'issue_certificate'
-        payload['domain'] = domain
-        payload['conf'] = conf
-        payload['conf'].pop('domains', None)
+        payload['domain_name'] = domain['name']
 
         lambda_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
@@ -831,35 +828,32 @@ def issue_certificate_handler(event, context):
         logger.info("[main] Using {0} as default KMS key.".format(event['defaultkey']))
         kms_key = event['defaultkey']
 
+    if 'configfile' not in event:
+        logger.warning("[main] Using 'letslambda.yml' as the default configuration file.")
+        letslambda_config = 'letslambda.yml'
+    else:
+        letslambda_config = event['configfile']
+
+    letslambda_config = clean_file_path(letslambda_config)
+    logger.info("[main] Retrieving configuration file '{0}' from bucket '{1}' in region '{2}' ".format(letslambda_config, s3_bucket, s3_region))
 
     s3_client = boto3.client('s3', config=Config(signature_version='s3v4', region_name=s3_region))
 
-    try:
-        conf = event['conf']
-    except KeyError as e:
-        logger.warning("[main] No configuration statement was provided, trying to load a default one.")
-
-        if 'configfile' not in event:
-            logger.warning("[main] Using 'letslambda.yml' as the default configuration file.")
-            letslambda_config = 'letslambda.yml'
-        else:
-            letslambda_config = event['configfile']
-
-        letslambda_config = clean_file_path(letslambda_config)
-
-        logger.info("[main] Retrieving configuration file '{0}' from bucket '{1}' in region '{2}' ".format(letslambda_config, s3_bucket, s3_region))
-        conf = load_config(s3_client, s3_bucket, letslambda_config)
-
-        if conf == None:
-            logger.critical("[main] Cannot load letslambda configuration. Exiting.")
-            return 1
+    conf = load_config(s3_client, s3_bucket, letslambda_config)
+    if conf == None:
+        logger.critical("[main] Cannot load letslambda configuration. Exiting.")
+        return 1
 
     if 'notification_table' not in event:
         logger.warning("[main] No DynamoDB table has been provided, so no notification will be issued.")
     else:
         conf['notification_table'] = event['notification_table']
 
+    conf['region'] = os.environ['AWS_DEFAULT_REGION']
     conf['s3_client'] = s3_client
+    conf['s3_bucket'] = s3_bucket
+    conf['letslambda_config'] = letslambda_config
+    conf['kms_key'] = kms_key
 
     if 'base_path' not in conf.keys():
         conf['base_path'] = ''
@@ -870,7 +864,17 @@ def issue_certificate_handler(event, context):
 
     acme_client = client.Client(conf['directory'], account_key)
 
-    domain = event['domain']
+    domain = ''
+    for dom in conf['domains']:
+        if event['domain_name'] == dom['name']:
+            logger.debug("[main] Found matching domain name '{0}' to issue certificate for.".format(dom['name']))
+            domain = dom
+            break
+
+    if domain == '':
+        # the payload doesn't match any domain name in the yaml file. There's nothing left to do.
+        logger.error("[main] Couldn't find any matching reference for domain '{0}'.".format(event['domain_name']))
+        return 1
 
     if 'r53_zone' in domain.keys():
         logger.warning("[main] The parameter 'r53_zone' associated to '{0}' has been deprecated in favor of 'dns_zone' and 'dns_provider'. Consider upgrading your configuration.".format(domain['name']))
