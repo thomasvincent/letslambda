@@ -49,22 +49,23 @@ domains:
     renew_before_expiry: 10 days
     countryName: FR
     reuse_key: true
+    keep_until_expired: true
     key_size: 2048
     base_path: letsencrypt/certificates/example.com/
     elbs:
       - name: elb_name
         region: ap-southeast-2
         port: 443
+    ssh-targets:
+      - host: ssh://username[:password]@hostname[:port]/local/path/
+        private_key: s3://bucketname/path/to/private/ssh/key
+        file_uid: 1001
+        file_gid: 33
+        file_mode: 0640
+      - host: ssh://...
     cfs:
       - id: XXXXXXXXXXXXXX
       - id: YYYYYYYYYYYYYY
-    ssh-targets:
-      - host: ssh://username[:password]@hostname[:port]/path/
-        private_key: s3://bucketname/path/to/private/ssh/key
-        file_uid: 1001
-        file_gid: 1001
-        file_mode: 0640
-      - host: ssh://...
   - name: api.anotherexample.com
     dns_zone: anotherexample.com
     dns_provider: ovh
@@ -79,6 +80,15 @@ domains:
       - name: elb_name_3
         region: ap-southeast-1
         port: 443
+    ssh-targets:
+      - host: ssh://username:password@hostname:port/path/
+        private_key: s3://bucketname/path/filename
+        file_uid: 1001
+        file_gid: 33
+        file_mode: 0640
+    cfs:
+      - id: XXXXXXXXXXXXXX
+      - id: YYYYYYYYYYYYYY
   - name: old.example.com
     dns_zone: example.com
     dns_provider: route53
