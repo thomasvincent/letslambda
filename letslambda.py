@@ -692,6 +692,8 @@ def deploy_certificates_handler(event, context):
                     logger.error("[main] Error: {0}".format(e))
                     continue
 
+    return 0
+
 
 def issue_certificates_handler(event, context):
     """
