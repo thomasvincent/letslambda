@@ -654,8 +654,8 @@ def deploy_certificates_handler(event, context):
 
     for domain in conf['domains']:
         # invoke lambda to request a deployment on the cert/key to a remote ssh host
-        if 'ssh-hosts' in domain.keys():
-            for sshhost in domain['ssh-hosts']:
+        if 'ssh-targets' in domain.keys():
+            for sshhost in domain['ssh-targets']:
                 if 'host' not in sshhost.keys():
                     logger.error("[main] No SSH url specified. Skipping this SSH host.")
                     continue
@@ -663,14 +663,14 @@ def deploy_certificates_handler(event, context):
                 payload = event
                 payload['action'] = 'deploy_certificate_ssh'
                 payload['domain_name'] = domain['name']
+                payload['host'] = sshhost['host']
+                payload['private_key'] = sshhost['private_key']
 
                 lambda_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
                 lambda_client = boto3.client('lambda')
 
-                logger.debug("[main] Execution payload for domain '{0}'.".format(
-                    domain['name']
-                ))
+                logger.debug("[main] Execution payload for domain '{0}'.".format( domain['name']))
                 logger.debug(lambda_payload)
 
                 # __DEBUG__
@@ -927,8 +927,8 @@ def issue_certificate_handler(event, context):
     logger.info("[main] Starting certificate deployment for '{0}'.".format(domain['name']))
 
     # Multi SSH servers mode (IAM not required)
-    if 'ssh-hosts' in domain.keys():
-        for sshhost in domain['ssh-hosts']:
+    if 'ssh-targets' in domain.keys():
+        for sshhost in domain['ssh-targets']:
             if 'host' not in sshhost.keys():
                 logger.error("[main] No SSH url specified. Skipping this SSH host.")
                 continue
@@ -936,14 +936,14 @@ def issue_certificate_handler(event, context):
             payload = event
             payload['action'] = 'deploy_certificate_ssh'
             payload['domain_name'] = domain['name']
+            payload['host'] = sshhost['host']
+            payload['private_key'] = sshhost['private_key']
 
             lambda_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
             lambda_client = boto3.client('lambda')
 
-            logger.debug("[main] Execution payload for domain '{0}'.".format(
-                domain['name']
-            ))
+            logger.debug("[main] Execution payload for domain '{0}'.".format( domain['name']))
             logger.debug(lambda_payload)
 
             # __DEBUG__
@@ -1128,33 +1128,58 @@ def deploy_certificate_ssh_handler(event, context):
 
     account_key = load_letsencrypt_account_key(conf)
 
-    domain = event['domain']
+    domain = ''
+    for dom in conf['domains']:
+        if event['domain_name'] == dom['name']:
+            logger.debug("[main] Found matching domain name '{0}' for deployment.".format(dom['name']))
+            domain = dom
+            break
 
-    if 'ssh-host' not in domain.keys():
-        logger.error("[main] No SSH host information found for domain '{0}'. Nothing to do.".format(domain['name']))
-        return
+    if domain == '':
+        # the payload doesn't match any domain name in the yaml file. There's nothing left to do.
+        logger.error("[main] Couldn't find any matching reference for domain '{0}'.".format(event['domain_name']))
+        return 1
 
-    ssh_conf = domain['ssh-host']
+    if 'host' not in event.keys():
+        logger.warning("[main] No SSH host url provided found for domain '{0}'. Skipping...".format(domain['name']))
+        return 1
 
-    if 'host' not in ssh_conf.keys():
-        logger.error("[main] No SSH host url provided found for domain '{0}'. Nothing to do.".format(domain['name']))
-        return
-
-    ssh_host = urlparse(ssh_conf['host'])
+    ssh_host = urlparse(event['host'])
 
     if ssh_host.username is None:
         logger.error("[main] No SSH username provided for domain '{0}'. Nothing to do.".format(domain['name']))
-        return
+        return 1
 
-    if ssh_host.password is None and 'private_key' not in ssh_conf.keys():
+    if ssh_host.password is None and 'private_key' not in event.keys():
         logger.error("[main] No password or SSH private key has been supplied. You *always* have an authentication method. Refusing to process domain '{0}'.".format(domain['name']))
-        return
+        return 1
+
+    if ssh_host.port is None:
+        # safely assign the default port for ssh (22). this helps with comparing
+        ssh_host = ssh_host._replace(netloc="{}:{}".format(ssh_host.hostname, 22))
+
+    for ssh_conf in conf['ssh-hosts']:
+
+        ssh_conf_host = urlparse(ssh_conf['host'])
+        if ssh_conf_host.port is None:
+            # safely assign the default port for ssh (22). this helps with comparing
+            ssh_conf_host = ssh_conf_host._replace(netloc="{}:{}".format(ssh_conf_host.hostname, 22))
+
+        if ssh_host.hostname == ssh_conf_host.hostname and ssh_host.port == ssh_conf_host.port:
+            logger.debug("[main] Found matching ssh host for domain '{0}'.".format(domain['name']))
+            break
+        else:
+            ssh_conf = None
+
+    if ssh_conf is None:
+        logger.error("[main] Couldn't find a matching ssh host configuration in `ssh-hosts` for domain '{0}'.".format(domain['name']))
+        return 1
+
 
     ssh = paramiko.SSHClient()
     hostkeys = ssh.get_host_keys()
 
     try:
-
         if 'host_public_keys' in ssh_conf.keys():
             for host_key in ssh_conf['host_public_keys']:
                 key = host_key['key'].split(' ')
@@ -1188,10 +1213,13 @@ def deploy_certificate_ssh_handler(event, context):
             else:
                 ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
                 logger.info("[main] SSH connection will be rejected if host public key doesn't match.")
+        else:
+            ssh.set_missing_host_key_policy(paramiko.RejectPolicy())
+            logger.info("[main] SSH connection will be rejected if host public key doesn't match.")
 
         pkey = None
-        if 'private_key' in ssh_conf.keys():
-            priv_key_info = urlparse(ssh_conf['private_key'])
+        if 'private_key' in event.keys():
+            priv_key_info = urlparse(event['private_key'])
 
             c = {
                 's3_client': s3_client,
@@ -1228,10 +1256,9 @@ def deploy_certificate_ssh_handler(event, context):
 
         connect_args = {
             'hostname': ssh_host.hostname,
-            'username': ssh_host.username
+            'username': ssh_host.username,
+            'port': ssh_host.port
         }
-        if ssh_host.port is not None:
-            connect_args['port'] = ssh_host.port
 
         if ssh_host.password is not None:
             connect_args['password'] = ssh_host.password
@@ -1244,8 +1271,6 @@ def deploy_certificate_ssh_handler(event, context):
         sftp = paramiko.SFTPClient.from_transport(t)
 
         # ==== We are connected to the remot host ====
-
-
         path_split = ssh_host.path.split('/')
         x = 2
         fs_path = ''
@@ -1329,7 +1354,9 @@ def deploy_certificate_ssh_handler(event, context):
     except (paramiko.SSHException, socket.error) as e:
         logger.error("[main] Failed to deploy certificate over SSH on host '{0}' for domain '{1}'.".format(ssh_host.hostname, domain['name']))
         logger.error("[main] Exception: {0}".format(e))
-        return
+        return 1
+
+    return 0
 
 
 def lambda_handler(event, context):
