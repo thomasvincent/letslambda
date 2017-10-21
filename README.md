@@ -215,7 +215,7 @@ This project relies on third party projects that requires some files to be compi
     $> yum install libcffi-devel libffi-devel libyaml-devel gcc openssl-devel git
     $> virtualenv .env
     $> source .env/bin/activate
-    $> pip install -r requirements.txt
+    $> python setup.py install
     $> ./make_package.sh
 
 Once this is done, all you have to do is to upload your lambda function to a S3 bucket.
