@@ -61,6 +61,7 @@ domains:
         file_uid: 1001
         file_gid: 1001
         file_mode: 0640
+      - host: ssh://...
   - name: api.anotherexample.com
     dns_zone: anotherexample.com
     dns_provider: ovh
