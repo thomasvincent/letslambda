@@ -935,13 +935,8 @@ def issue_certificate_handler(event, context):
             payload = event
             payload['action'] = 'deploy_certificate_ssh'
 
-            payload['domain'] = domain
-            payload['domain']['ssh-host'] = sshhost
-            payload['domain'].pop('ssh-hosts', None) # remove unecessary data
+            payload['domain_name'] = domain['name']
 
-            payload['conf'] = conf
-            payload['conf'].pop('s3_client', None) # remove python object
-            payload['conf'].pop('domains', None) # remove unecessary data
 
             lambda_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
@@ -953,7 +948,6 @@ def issue_certificate_handler(event, context):
             logger.debug(lambda_payload)
 
             # __DEBUG__
-
             try:
                 r = lambda_client.invoke(
                     FunctionName=context.function_name,
