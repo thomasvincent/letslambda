@@ -192,7 +192,7 @@ def save_certificates_to_s3(conf, domain, chain_certificate, certificate, key):
 
     bundle = key + certificate + chain_certificate
     logger.info("[main] Saving certificate bundle to S3")
-    save_to_s3(conf, domain['base_path']+domain['name']+".bundle.pem", certificate)
+    save_to_s3(conf, domain['base_path']+domain['name']+".bundle.pem", bundle)
 
 
 def upload_to_iam(conf, domain, chain_certificate, certificate, key):
