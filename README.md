@@ -56,7 +56,7 @@ domains:
       - id: XXXXXXXXXXXXXX
       - id: YYYYYYYYYYYYYY
     ssh-targets:
-      - host: ssh://username[:password]@hostname:port/path/
+      - host: ssh://username[:password]@hostname[:port]/path/
         private_key: s3://bucketname/path/to/private/ssh/key
         file_uid: 1001
         file_gid: 1001
