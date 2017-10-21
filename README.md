@@ -26,6 +26,8 @@ The configuration file is based on YAML. It should be easy to understand by revi
 directory: https://acme-v01.api.letsencrypt.org/directory
 base_path: letsencrypt/
 delete_expired_certificates: true
+renew_before_expiry: 30 days
+keep_until_expired: true
 info:
   - mailto:myemail@example.com
 ssh-hosts:
@@ -44,6 +46,7 @@ domains:
   - name: www.example.com
     dns_zone: example.com
     dns_provider: route53
+    renew_before_expiry: 10 days
     countryName: FR
     reuse_key: true
     key_size: 2048
@@ -79,6 +82,7 @@ domains:
   - name: old.example.com
     dns_zone: example.com
     dns_provider: route53
+    keep_until_expired: false
     countryName: FR
     reuse_key: false
     key_size: 4096
@@ -97,6 +101,10 @@ domains:
 
 `delete_expired_cert`: This defines whether or not expired server certificates stored in IAM should be removed. By default, an AWS account can store up to 20 server certificates making this resource quite limited. And since a server certificate can only be added or removed (not updated), the renewal process may easily pass the maximum allows limit. If unspecified the default is `false` (do not remove). Server certificates stored in the S3 bucket aren't affected regardless of this value. If the server certificate is linked to an AWS service (ELB or CloudFront), the deletion will fail.
 
+`renew_before_expiry`: This defines the interval between a certificate expiration and the date we actually renew it. A value of `30 days` would mean that a new certificate is generated if it expires in less than 30 days.
+
+`keep_until_expired`: This defines if we keep certificates around until they enter the `renew_before_expiry` window or actually expire.
+
 `info`: The information to be used when the script is registering your account for the first time. You should provide a valid email or the registration may fail.
 
     info:
@@ -112,6 +120,8 @@ Here is the details for each domain.
 `domains`: a list of domain information.
 
  - `- name`: The host name for which you want your certificate to be issued for.
+ - `renew_before_expiry`: Overrides the root value for the domain. See above.
+ - `keep_until_expired`: Overrides the root value for the domain. See above.
  - `dns_zone`: the DNS hosted zone name which contains the DNS entry for `name`.
  - `dns_provider`: The service provider hosting your DNS zone. It can either be `ovh` or `route53`.
  - `dns_auth` : The service provider credentials for your account. The JSON encoded value is passed directly to the provider. Currently only `ovh` is supported.

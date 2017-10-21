@@ -2,6 +2,7 @@ directory: https://acme-v01.api.letsencrypt.org/directory
 base_path: letsencrypt/
 delete_expired_cert: true
 concurrent_execution: 100
+renew_before_expiry: 30 days
 info:
   - mailto:myemail@example.com
 domains:
@@ -10,6 +11,7 @@ domains:
     dns_provider: route53
     countryName: FR
     reuse_key: true
+    keep_until_expired: true
     key_size: 2048
     base_path: letsencrypt/certificates/example.com/
     elbs:

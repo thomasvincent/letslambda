@@ -18,6 +18,7 @@ install_requires = [
     'pytz',
     'PyYAML>=3.11,<3.12',
     'requests',
+    'parsedatetime'
 ]
 
 if sys.version_info < (2, 7):

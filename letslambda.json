@@ -46,6 +46,11 @@
             "Description": "Name of the DynamoDB table where certificate issuance notifications are stored. (Stack is added to this value)",
             "Type": "String",
             "Default": "LetsLambdaNotifications"
+        },
+        "SchedulerIssuanceRate": {
+            "Description": "How often to run the issuance job. Example: 10 days",
+            "Type": "String",
+            "Default": "30 days"
         }
     },
     "Metadata" : {
@@ -58,7 +63,7 @@
                 },
                 {
                     "Label": {"default": "LetsLambda configuration settings" },
-                    "Parameters": ["Bucket", "Region", "ConfigFile", "FnName" ]
+                    "Parameters": ["Bucket", "Region", "ConfigFile", "FnName", "SchedulerIssuanceRate" ]
                 },
                 {
                     "Label": {"default": "Encryption settings" },
@@ -391,7 +396,8 @@
             "Properties" : {
                 "Description" : "Monthly scheduler for certificate renewal",
                 "Name" : "LetsLambda-Issuance-Scheduler",
-                "ScheduleExpression" : "rate(30 days)",
+                "ScheduleExpression" : { "Fn::Join": ["", [
+                    "rate(", {"Ref": "SchedulerIssuanceRate"}, ")"]]},
                 "State" : "ENABLED",
                 "Targets" : [ {
                     "Arn": {"Fn::GetAtt": ["LetsLambdaFunction", "Arn"]},

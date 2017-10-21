@@ -9,6 +9,7 @@ import logging
 import os
 import ovh
 import paramiko
+import parsedatetime
 import pytz
 import re
 import requests
@@ -394,6 +395,35 @@ def load_private_key(conf, domain):
 
     return crypto.load_privatekey(crypto.FILETYPE_PEM, key)
 
+def add_time_interval(base_time, interval, textparser=parsedatetime.Calendar()):
+    if interval.strip().isdigit():
+        interval += " days"
+
+    return textparser.parseDT(interval, base_time, tzinfo=pytz.UTC)[0]
+
+def load_certificate(conf, domain):
+    s3_key = domain['base_path'] + domain['name'] + ".cert." + conf['extension']
+
+    logger.debug("[main] Attempting to load certificate from S3 '{0}' for domain '{1}'".format(s3_key, domain['name']))
+
+    certificate_pem = load_from_s3(conf, s3_key)
+
+    if certificate_pem == None:
+        return None
+
+    return crypto.load_certificate(crypto.FILETYPE_PEM, certificate_pem)
+
+def is_certificate_expired(conf, domain, certificate):
+    interval = domain['renew_before_expiry']
+    target_expiry = pytz.UTC.localize(datetime.strptime(certificate.get_notAfter().decode('ascii'), '%Y%m%d%H%M%SZ'))
+    now = pytz.UTC.fromutc(datetime.utcnow())
+
+    if target_expiry < add_time_interval(now, interval):
+        logger.info("[main] Certificate within expiry interval.")
+        return True
+
+    return False
+
 def generate_certificate_signing_request(conf, domain):
     key = load_private_key(conf, domain)
 
@@ -643,6 +673,7 @@ def deploy_certificates_handler(event, context):
         conf['notification_table'] = event['notification_table']
 
     conf['region'] = os.environ['AWS_DEFAULT_REGION']
+    conf['s3_client'] = s3_client
     conf['s3_bucket'] = s3_bucket
     conf['letslambda_config'] = letslambda_config
     conf['kms_key'] = kms_key
@@ -754,6 +785,9 @@ def issue_certificates_handler(event, context):
     else:
         conf['base_path'] = clean_dir_path(conf['base_path'])
 
+    if 'renew_before_expiry' not in conf.keys():
+        conf['renew_before_expiry'] = '30 days'
+
     # falsely attempt to load the LE account key so it is created when
     # child functions are invoked they account key won't have to be generated
     # by multiple child functions at the same time
@@ -761,6 +795,20 @@ def issue_certificates_handler(event, context):
     account_key = load_letsencrypt_account_key(conf)
 
     for domain in conf['domains']:
+        if 'renew_before_expiry' not in domain.keys():
+            domain['renew_before_expiry'] = conf['renew_before_expiry']
+
+        if 'keep_until_expired' not in domain.keys():
+            domain['keep_until_expired'] = False
+
+        conf['s3_client'] = s3_client
+        certificate = load_certificate(conf, domain)
+        conf.pop('s3_client', None)
+
+        if certificate != None and domain['keep_until_expired'] and not is_certificate_expired(conf, domain, certificate):
+            logger.info("[main] Certificate not expired. Skipping domain '{0}'.".format(domain['name']))
+            continue
+
         payload = event
         payload['action'] = 'issue_certificate'
         payload['domain_name'] = domain['name']
