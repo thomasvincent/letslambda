@@ -175,11 +175,11 @@ Once you have declared a ssh host (see above), you can use it as a deployment ta
 `ssh-targets`: a list of known ssh servers to deploy the related certificate onto.
 
  - `- host`: A valid url whre you wish to deploy your certificate to. The url must start with `ssh://`. This server must be declared globally in `ssh-hosts` in order to be used.
- `username`: SSH user name used during the authentication.
- `password`: The corresponding password for password based authentication. This parameter is optional when using `private_key` authentication.
- `hostname`: A valid fully qualified domain name, or a valid IP address to connect to.
- `port`: If the ssh server doesn't listen on port 22 (default), then set the correct value here. This should be matching the declaration in `ssh-hosts`.
- `path`: The remote directory where the certificate should be deployed. (see below)
+   * `username`: SSH user name used during the authentication.
+   * `password`: The corresponding password for password based authentication. This parameter is optional when using `private_key` authentication.
+   * `hostname`: A valid fully qualified domain name, or a valid IP address to connect to.
+   * `port`: If the ssh server doesn't listen on port 22 (default), then set the correct value here. This should be matching the declaration in `ssh-hosts`.
+   * `path`: The remote directory where the certificate should be deployed. (see below)
  - `private_key`: A valid S3 url to download the ssh private key used during the authentication. Supported types are `RSA`, `DSA`, `ECDSA`.
  - `file_uid`: Numerical user Id (uid) value to change the files ownership to.
  - `file_gid`: Numerical group Id (gid) value to change the files ownership to.`
