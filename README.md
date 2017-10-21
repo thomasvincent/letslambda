@@ -28,6 +28,18 @@ base_path: letsencrypt/
 delete_expired_certificates: true
 info:
   - mailto:myemail@example.com
+ssh-hosts:
+  - host: ssh://hostname[:port]
+    ignore_host_public_key: false
+    host_public_keys:
+     - key: ssh-dss AAAAB3NzaC1....
+     - key: ssh-rsa AAAAB3NzaC1....
+     - key: ecdsa-sha2-nistp256 AAAAE2VjZ....
+     - key: ssh-ed25519 AAAAC3NzaC1...
+  - host: ssh://...
+    ignore_host_public_key: false
+    host_public_keys:
+     - key: ...
 domains:
   - name: www.example.com
     dns_zone: example.com
@@ -43,18 +55,12 @@ domains:
     cfs:
       - id: XXXXXXXXXXXXXX
       - id: YYYYYYYYYYYYYY
-    ssh-hosts:
-      - host: ssh://username:password@hostname:port/path/
+    ssh-targets:
+      - host: ssh://username[:password]@hostname:port/path/
         private_key: s3://bucketname/path/to/private/ssh/key
-        ignore_host_public_key: false
         file_uid: 1001
         file_gid: 1001
         file_mode: 0640
-        host_public_keys:
-         - key: ssh-dss AAAAB3NzaC1....
-         - key: ssh-rsa AAAAB3NzaC1....
-         - key: ecdsa-sha2-nistp256 AAAAE2VjZ....
-         - key: ssh-ed25519 AAAAC3NzaC1...
   - name: api.anotherexample.com
     dns_zone: anotherexample.com
     dns_provider: ovh
@@ -141,6 +147,45 @@ And for each CloudFront distribution:
  - `- id` which represents your CloudFront distribution ID
 
 Unlike other AWS services, CloudFront requires some time to be fully deployed. Usually about 30 minutes but this may vary. LetsLambda will __not__ updated your distribution configuration if it's not in a deployed state (where pending configuration changes are being deployed).
+
+### Deploying to a SSH host ###
+It's possible to deploy the cetificates and the private key to a remote ssh server via SFTP. However, careful considerations should be given due to the security implications of copying a private key cwto a remote server.
+
+The configuration is done in two parts:
+ - A global section named `ssh-hosts` where remote servers are declared. For each host, associated host public keys are defined
+ - Per `domain`, one or more ssh target is defined.
+
+It's important to note that host name and ports must match to relate each element together during the deployment phase.
+
+#### Declaring SSH hosts ####
+For a SSH target (see below) to be allowed, it has to be declared first in in the global `ssh-hosts` sections.
+
+Here is the details for each host.
+
+`ssh-hosts`: a list of ssh host information.
+
+ - `- host`: The SSH host details. The scheme `ssh://` is mandatory. `:port` is optional and defaults to `22` (ssh default communication port).
+ - `ignore_host_public_key`: If `true`, when connecting to the ssh server, do not perform host public key verification. This is not recommended.
+ - `host_public_keys`: A list of valid public ssh host keys.
+ -- `key`: one ssh public  key as usually found in `/etc/ssh/ssh_host_*.pub`
+
+#### Declaring SSH targets ####
+Once you have declared a ssh host (see above), you can use it as a deployment target in one or more domain.
+
+`ssh-targets`: a list of known ssh servers to deploy the related certificate onto.
+
+ - `- host`: A valid url whre you wish to deploy your certificate to. The url must start with `ssh://`. This server must be declared globally in `ssh-hosts` in order to be used.
+ `username`: SSH user name used during the authentication.
+ `password`: The corresponding password for password based authentication. This parameter is optional when using `private_key` authentication.
+ `hostname`: A valid fully qualified domain name, or a valid IP address to connect to.
+ `port`: If the ssh server doesn't listen on port 22 (default), then set the correct value here. This should be matching the declaration in `ssh-hosts`.
+ `path`: The remote directory where the certificate should be deployed. (see below)
+ - `private_key`: A valid S3 url to download the ssh private key used during the authentication. Supported types are `RSA`, `DSA`, `ECDSA`.
+ - `file_uid`: Numerical user Id (uid) value to change the files ownership to.
+ - `file_gid`: Numerical group Id (gid) value to change the files ownership to.`
+ - `file_mode`: Octal value to change the files permissions to.
+
+Note: If the remote path doesn't exist on the destination file system, Let's Lambda will attempt to create it.
 
 ## Installation ##
 
