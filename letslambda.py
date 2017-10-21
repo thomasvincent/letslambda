@@ -653,6 +653,7 @@ def deploy_certificates_handler(event, context):
         conf['base_path'] = clean_dir_path(conf['base_path'])
 
     for domain in conf['domains']:
+        # invoke lambda to request a deployment on the cert/key to a remote ssh host
         if 'ssh-hosts' in domain.keys():
             for sshhost in domain['ssh-hosts']:
                 if 'host' not in sshhost.keys():
@@ -662,12 +663,7 @@ def deploy_certificates_handler(event, context):
                 payload = event
                 payload['action'] = 'deploy_certificate_ssh'
 
-                payload['domain'] = domain
-                payload['domain']['ssh-host'] = sshhost
-                payload['domain'].pop('ssh-hosts', None) # remove unecessary data
-
-                payload['conf'] = conf
-                payload['conf'].pop('domains', None)
+                payload['domain_name'] = domain['name']
 
                 lambda_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
@@ -679,7 +675,6 @@ def deploy_certificates_handler(event, context):
                 logger.debug(lambda_payload)
 
                 # __DEBUG__
-
                 try:
                     r = lambda_client.invoke(
                         FunctionName=context.function_name,
