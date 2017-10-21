@@ -662,7 +662,6 @@ def deploy_certificates_handler(event, context):
 
                 payload = event
                 payload['action'] = 'deploy_certificate_ssh'
-
                 payload['domain_name'] = domain['name']
 
                 lambda_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True)
@@ -936,9 +935,7 @@ def issue_certificate_handler(event, context):
 
             payload = event
             payload['action'] = 'deploy_certificate_ssh'
-
             payload['domain_name'] = domain['name']
-
 
             lambda_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
@@ -1104,30 +1101,23 @@ def deploy_certificate_ssh_handler(event, context):
         kms_key = event['defaultkey']
 
 
+    if 'configfile' not in event:
+        logger.warning("[main] Using 'letslambda.yml' as the default configuration file.")
+        letslambda_config = 'letslambda.yml'
+    else:
+        letslambda_config = event['configfile']
+
+    letslambda_config = clean_file_path(letslambda_config)
+    logger.info("[main] Retrieving configuration file '{0}' from bucket '{1}' in region '{2}' ".format(letslambda_config, s3_bucket, s3_region))
+
     s3_client = boto3.client('s3', config=Config(signature_version='s3v4', region_name=s3_region))
 
-    try:
-        conf = event['conf']
-    except KeyError as e:
-        logger.warning("[main] No configuration statement was provided, trying to load a default one.")
+    conf = load_config(s3_client, s3_bucket, letslambda_config)
+    if conf == None:
+        logger.critical("[main] Cannot load letslambda configuration. Exiting.")
+        return 1
 
-        if 'configfile' not in event:
-            logger.warning("[main] Using 'letslambda.yml' as the default configuration file.")
-            letslambda_config = 'letslambda.yml'
-        else:
-            letslambda_config = event['configfile']
-
-        letslambda_config = clean_file_path(letslambda_config)
-
-        logger.info("[main] Retrieving configuration file '{0}' from bucket '{1}' in region '{2}' ".format(letslambda_config, s3_bucket, s3_region))
-        conf = load_config(s3_client, s3_bucket, letslambda_config)
-
-        if conf == None:
-            logger.critical("[main] Cannot load letslambda configuration. Exiting.")
-            return 1
-
-    logger.debug(json.dumps(conf, ensure_ascii=False, sort_keys=True))
-
+    conf['region'] = os.environ['AWS_DEFAULT_REGION']
     conf['s3_client'] = s3_client
     conf['s3_bucket'] = s3_bucket
 
