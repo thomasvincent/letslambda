@@ -418,10 +418,13 @@ def is_certificate_expired(conf, domain, certificate):
     target_expiry = pytz.UTC.localize(datetime.strptime(certificate.get_notAfter().decode('ascii'), '%Y%m%d%H%M%SZ'))
     now = pytz.UTC.fromutc(datetime.utcnow())
 
+    days_left = (datetime.strptime(certificate.get_notAfter().decode('ascii'), '%Y%m%d%H%M%SZ') - datetime.utcnow()).days
+
     if target_expiry < add_time_interval(now, interval):
-        logger.info("[main] Certificate within expiry interval.")
+        logger.info("[main] Certificate for domain '{0}' within expiry interval ({1} days left).".format(domain['name'], days_left))
         return True
 
+    logger.info("[main] Certificate for domain '{0}' NOT within expiry interval ({1} days left).".format(domain['name'], days_left))
     return False
 
 def generate_certificate_signing_request(conf, domain):
@@ -799,11 +802,15 @@ def issue_certificates_handler(event, context):
             domain['renew_before_expiry'] = conf['renew_before_expiry']
 
         if 'keep_until_expired' not in domain.keys():
-            domain['keep_until_expired'] = False
+            domain['keep_until_expired'] = conf['keep_until_expired']
+
+        if 'base_path' not in domain.keys():
+            domain['base_path'] = conf['base_path']
 
         conf['s3_client'] = s3_client
         certificate = load_certificate(conf, domain)
         conf.pop('s3_client', None)
+
 
         if certificate != None and domain['keep_until_expired'] and not is_certificate_expired(conf, domain, certificate):
             logger.info("[main] Certificate not expired. Skipping domain '{0}'.".format(domain['name']))
