@@ -1209,18 +1209,19 @@ def deploy_certificate_ssh_handler(event, context):
         logger.error("[main] No password or SSH private key has been supplied. You *always* have an authentication method. Refusing to process domain '{0}'.".format(domain['name']))
         return 1
 
+    ssh_host_tmp = ''
     if ssh_host.port is None:
-        # safely assign the default port for ssh (22). this helps with comparing
-        ssh_host = ssh_host._replace(netloc="{}:{}".format(ssh_host.hostname, 22))
+        # safely assign the default port for ssh (22). this helps with comparison
+        ssh_host_tmp = ssh_host._replace(netloc="{}:{}".format(ssh_host.hostname, 22))
 
     for ssh_conf in conf['ssh-hosts']:
 
         ssh_conf_host = urlparse(ssh_conf['host'])
         if ssh_conf_host.port is None:
-            # safely assign the default port for ssh (22). this helps with comparing
+            # safely assign the default port for ssh (22). this helps with comparison
             ssh_conf_host = ssh_conf_host._replace(netloc="{}:{}".format(ssh_conf_host.hostname, 22))
 
-        if ssh_host.hostname == ssh_conf_host.hostname and ssh_host.port == ssh_conf_host.port:
+        if ssh_host_tmp.hostname == ssh_conf_host.hostname and ssh_host_tmp.port == ssh_conf_host.port:
             logger.debug("[main] Found matching ssh host for domain '{0}'.".format(domain['name']))
             break
         else:
@@ -1309,11 +1310,22 @@ def deploy_certificate_ssh_handler(event, context):
 
 
 
-        connect_args = {
-            'hostname': ssh_host.hostname,
-            'username': ssh_host.username,
-            'port': ssh_host.port
-        }
+        connect_args = ''
+        if ssh_host.port is None:
+            connect_args = {
+                'hostname': ssh_host.hostname,
+                'username': ssh_host.username,
+                'port': 22
+            }
+            logger.debug("[main] Connecting to 'ssh://{0}@{1}:22'.".format(ssh_host.username, ssh_host.hostname))
+        else:
+            connect_args = {
+                'hostname': ssh_host.hostname,
+                'username': ssh_host.username,
+                'port': ssh_host.port
+            }
+            logger.debug("[main] Connecting to 'ssh://{0}@{1}:{2}'.".format(ssh_host.username, ssh_host.hostname, ssh_host.port))
+
 
         if ssh_host.password is not None:
             connect_args['password'] = ssh_host.password
